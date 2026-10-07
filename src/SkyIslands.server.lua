@@ -19,6 +19,57 @@ local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
 local DataStoreService = game:GetService("DataStoreService")
 local StarterPlayer = game:GetService("StarterPlayer")
+local Debris = game:GetService("Debris")
+
+------------------------------------------------------------------------
+-- الأصوات: أصوات Roblox المدمجة (rbxasset). يمكنك استبدال أي قيمة برقم من
+-- Creator Store مثل "rbxassetid://123456". اترك النص فارغاً "" لإيقاف الصوت.
+------------------------------------------------------------------------
+local SFX = {
+	coin = "rbxasset://sounds/electronicpingshort.wav",
+	checkpoint = "rbxasset://sounds/victory.wav",
+	jump = "rbxasset://sounds/action_jump.mp3",
+	push = "rbxasset://sounds/impact_water.mp3",
+	glass = "rbxasset://sounds/impact_explosion_03.mp3",
+	hurt = "rbxasset://sounds/uuhhh.mp3",
+	stomp = "rbxasset://sounds/snap.mp3",
+	buy = "rbxasset://sounds/button.wav",
+	deny = "rbxasset://sounds/clickfast.wav",
+	win = "rbxasset://sounds/victory.wav",
+}
+-- موسيقى الخلفية: ضع هنا أرقام موسيقى (مثل "rbxassetid://1234567890") وتتشغل بالتتابع
+local MUSIC = {}
+
+local function sfx(key, parent, volume, pitch)
+	local id = SFX[key]
+	if not id or id == "" or not parent then
+		return
+	end
+	local snd = Instance.new("Sound")
+	snd.SoundId = id
+	snd.Volume = volume or 0.6
+	snd.PlaybackSpeed = pitch or 1
+	snd.RollOffMaxDistance = 140
+	snd.Parent = parent
+	snd:Play()
+	Debris:AddItem(snd, 5)
+end
+
+------------------------------------------------------------------------
+-- المتجر: العناصر المعروضة (السعر بالعملات)
+------------------------------------------------------------------------
+local SHOP = {
+	{ id = "speed", name = "حذاء السرعة", desc = "+6 سرعة مشي", price = 30, color = Color3.fromRGB(80, 200, 255), shape = Enum.PartType.Block },
+	{ id = "jump", name = "نطّة عالية", desc = "+15 قوة قفز", price = 40, color = Color3.fromRGB(110, 255, 140), shape = Enum.PartType.Cylinder },
+	{ id = "hearts", name = "قلب إضافي", desc = "الصحة 150", price = 35, color = Color3.fromRGB(255, 90, 120), shape = Enum.PartType.Ball },
+	{ id = "magnet", name = "مغناطيس العملات", desc = "يجذب العملات القريبة", price = 60, color = Color3.fromRGB(255, 205, 40), shape = Enum.PartType.Ball },
+	{ id = "pet", name = "رفيق متوهج", desc = "كرة مضيئة تتبعك", price = 50, color = Color3.fromRGB(190, 120, 255), shape = Enum.PartType.Ball },
+	{ id = "trail", name = "ذيل ناري", desc = "ذيل لهب ملوّن", price = 25, color = Color3.fromRGB(255, 130, 40), shape = Enum.PartType.Block },
+}
+local SHOP_BY_ID = {}
+for _, it in ipairs(SHOP) do
+	SHOP_BY_ID[it.id] = it
+end
 
 ------------------------------------------------------------------------
 -- إعدادات عامة
@@ -254,6 +305,82 @@ local function weather(center, size, color, rate, fall)
 	return a
 end
 
+-- الأعداء: slime (يتحرك ذهاباً وإياباً)، drone وghost (طيران)، guardian (يدور حول الكأس)
+local enemies = {}
+local function newEnemy(look, motion, p)
+	local id = #enemies + 1
+	local m = Instance.new("Model")
+	m.Name = "Enemy_" .. look
+	local function bp(shape, size, offset, color, material, transparency)
+		return pt({
+			Shape = shape, Size = size, Position = offset, Color = color,
+			Material = material or Enum.Material.SmoothPlastic, Transparency = transparency or 0, CanCollide = false,
+		}, m)
+	end
+	local B = Enum.PartType.Ball
+	local K = Enum.PartType.Block
+	local body, dmg, killable, spin = nil, 20, true, false
+	if look == "slime" then
+		body = bp(B, Vector3.new(4.4, 4.4, 4.4), Vector3.zero, Color3.fromRGB(90, 230, 110), nil, 0.1)
+		for _, sx in ipairs({ -0.95, 0.95 }) do
+			bp(B, Vector3.new(1.2, 1.2, 1.2), Vector3.new(sx, 0.7, -1.9), Color3.fromRGB(255, 255, 255))
+			bp(B, Vector3.new(0.6, 0.6, 0.6), Vector3.new(sx, 0.7, -2.4), Color3.fromRGB(10, 10, 10))
+		end
+	elseif look == "drone" then
+		body = bp(B, Vector3.new(3.4, 3.4, 3.4), Vector3.zero, Color3.fromRGB(255, 60, 70), Enum.Material.Neon)
+		for _, sx in ipairs({ -3, 3 }) do
+			bp(K, Vector3.new(4, 0.2, 1.4), Vector3.new(sx, 0.3, 0), Color3.fromRGB(40, 40, 55), Enum.Material.Metal)
+		end
+		bp(B, Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 0.3, -1.6), Color3.fromRGB(255, 240, 80), Enum.Material.Neon)
+	elseif look == "ghost" then
+		body = bp(B, Vector3.new(4, 4, 4), Vector3.zero, Color3.fromRGB(245, 245, 255), Enum.Material.Neon, 0.35)
+		for _, sx in ipairs({ -0.9, 0.9 }) do
+			bp(B, Vector3.new(0.9, 1.3, 0.9), Vector3.new(sx, 0.5, -1.8), Color3.fromRGB(20, 20, 30))
+		end
+	else -- guardian
+		body = bp(B, Vector3.new(7, 7, 7), Vector3.zero, Color3.fromRGB(40, 30, 60), Enum.Material.Metal)
+		bp(K, Vector3.new(1.2, 13, 1.2), Vector3.zero, Color3.fromRGB(255, 50, 80), Enum.Material.Neon)
+		bp(K, Vector3.new(13, 1.2, 1.2), Vector3.zero, Color3.fromRGB(255, 50, 80), Enum.Material.Neon)
+		bp(K, Vector3.new(1.2, 1.2, 13), Vector3.zero, Color3.fromRGB(255, 50, 80), Enum.Material.Neon)
+		dmg, killable, spin = 35, false, true
+	end
+	m.PrimaryPart = body
+	for _, d in ipairs(m:GetChildren()) do
+		d:SetAttribute("EnemyId", id)
+		CollectionService:AddTag(d, "Enemy")
+	end
+	enemies[id] = { id = id, model = m, body = body, look = look, motion = motion, p = p, alive = true, dmg = dmg, killable = killable, spin = spin }
+	m.Parent = Map
+	return enemies[id]
+end
+
+local function updateEnemy(e, t)
+	local p = e.p
+	local ph = p.phase or 0
+	local cf
+	if e.motion == "patrol" then
+		local dist = (p.b - p.a).Magnitude
+		local u = (t * p.speed / dist + ph) % 2
+		local s = u < 1 and u or 2 - u
+		local pos = p.a:Lerp(p.b, s)
+		if e.look == "slime" then
+			pos = pos + Vector3.new(0, math.abs(math.sin(t * 5 + ph * 3)) * 1.2, 0)
+		else
+			pos = pos + Vector3.new(0, math.sin(t * 3 + ph) * 0.8, 0)
+		end
+		local dirv = (u < 1) and (p.b - p.a) or (p.a - p.b)
+		cf = CFrame.lookAt(pos, pos + dirv)
+	else
+		local ang = ph + t * p.speed
+		local pos = p.center + Vector3.new(math.cos(ang) * p.radius, math.sin(t * 2 + ang), math.sin(ang) * p.radius)
+		cf = CFrame.lookAt(pos, pos + Vector3.new(-math.sin(ang), 0, math.cos(ang)))
+		if e.spin then
+			cf = cf * CFrame.Angles(0, t * 3, t * 1.5)
+		end
+	end
+	e.model:PivotTo(cf)
+end
+
 local function coin(pos)
 	local c = pt({
 		Shape = Enum.PartType.Cylinder,
@@ -455,6 +582,77 @@ do
 end
 
 ------------------------------------------------------------------------
+-- المتجر (في الهب): اقترب من أي عرض واضغط E للشراء
+------------------------------------------------------------------------
+do
+	local m = Instance.new("Model")
+	m.Name = "Shop"
+	m.Parent = Map
+	local center = HUB_TOP + Vector3.new(-26, 0, -6)
+	disc(center + Vector3.new(0, 0.2, 0), 13, 0.4, Color3.fromRGB(70, 60, 95), Enum.Material.Slate, m)
+	disc(center + Vector3.new(0, 0.45, 0), 11.5, 0.2, Color3.fromRGB(120, 95, 170), Enum.Material.Neon, m).Transparency = 0.5
+
+	-- سقف وأعمدة
+	local roof = disc(center + Vector3.new(0, 14, 0), 13.5, 1, Color3.fromRGB(150, 90, 230), Enum.Material.Neon, m)
+	roof.Transparency = 0.35
+	local rl = Instance.new("PointLight")
+	rl.Range = 40
+	rl.Brightness = 1.5
+	rl.Color = Color3.fromRGB(210, 160, 255)
+	rl.Parent = roof
+	for i = 1, 6 do
+		local a = (i / 6) * math.pi * 2
+		pt({ Size = Vector3.new(1.2, 14, 1.2), Position = center + Vector3.new(math.cos(a) * 12.5, 7, math.sin(a) * 12.5),
+			Color = Color3.fromRGB(235, 235, 250), Material = Enum.Material.Marble }, m)
+	end
+	local title = pt({ Size = Vector3.new(1, 1, 1), Position = center + Vector3.new(0, 17.5, 0), Transparency = 1, CanCollide = false }, m)
+	billboard(title, "🛒 المتجر", Color3.fromRGB(255, 230, 120))
+
+	-- العروض على شكل قوس
+	for i, item in ipairs(SHOP) do
+		local a = math.pi * 0.5 + ((i - 1) / (#SHOP - 1)) * math.pi
+		local base = center + Vector3.new(math.cos(a) * 8.5, 0, math.sin(a) * 8.5)
+		local stand = disc(base + Vector3.new(0, 1, 0), 2.2, 1.6, Color3.fromRGB(235, 235, 245), Enum.Material.Marble, m)
+		stand:SetAttribute("ItemId", item.id)
+		CollectionService:AddTag(stand, "ShopItem")
+
+		local icon = pt({
+			Shape = item.shape, Size = Vector3.new(2.6, 2.6, 2.6), Color = item.color,
+			Material = Enum.Material.Neon, CanCollide = false,
+		}, m)
+		local il = Instance.new("PointLight")
+		il.Range = 12
+		il.Color = item.color
+		il.Parent = icon
+		table.insert(floaters, { part = icon, center = base + Vector3.new(0, 5, 0), radius = 0, angle = 0, speed = 0, bob = i })
+
+		local bb = Instance.new("BillboardGui")
+		bb.Size = UDim2.new(0, 200, 0, 70)
+		bb.StudsOffset = Vector3.new(0, 7.5, 0)
+		bb.MaxDistance = 60
+		bb.Parent = stand
+		local t = Instance.new("TextLabel")
+		t.Size = UDim2.fromScale(1, 1)
+		t.BackgroundTransparency = 1
+		t.TextScaled = true
+		t.Font = Enum.Font.GothamBlack
+		t.TextColor3 = Color3.fromRGB(255, 255, 255)
+		t.TextStrokeTransparency = 0.3
+		t.Text = item.name .. "\n" .. item.price .. " 🪙 — " .. item.desc
+		t.Parent = bb
+
+		local pr = Instance.new("ProximityPrompt")
+		pr.ActionText = "شراء"
+		pr.ObjectText = item.name .. " (" .. item.price .. " عملة)"
+		pr.HoldDuration = 0.3
+		pr.MaxActivationDistance = 12
+		pr.RequiresLineOfSight = false
+		pr.KeyboardKeyCode = Enum.KeyCode.E
+		pr.Parent = stand
+	end
+end
+
+------------------------------------------------------------------------
 -- المرحلة 1: جزر الزهور (اتجاه -Z)
 ------------------------------------------------------------------------
 local cp1
@@ -469,6 +667,9 @@ do
 		local m = island(pos, nr, STYLE_GRASS)
 		scatter(m, pos, nr, { flowers = 8, lamps = (i % 3 == 0) and 1 or 0, lampOffset = 1 })
 		coin(pos + Vector3.new(0, 3.5, 0))
+		if i == 3 or i == 6 then
+			newEnemy("slime", "patrol", { a = pos + Vector3.new(-3.2, 2.3, 0), b = pos + Vector3.new(3.2, 2.3, 0), speed = 5, phase = i * 0.3 })
+		end
 	end
 	pos = advance(pos, r, 11, 4, dir, 1.5)
 	pos = Vector3.new(0, pos.Y, pos.Z)
@@ -507,6 +708,9 @@ do
 		TweenService:Create(p, TweenInfo.new(vertical and 3 or 3.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Position = b }):Play()
 		coin(Vector3.new(base.X, y + 5.5, z))
+		if k == 3 or k == 5 then
+			newEnemy("drone", "orbit", { center = Vector3.new(base.X, y + 4, z), radius = 11, speed = 1.3, phase = k })
+		end
 		addPathPoint(Vector3.new(base.X, y, z))
 		addPathPoint(Vector3.new(base.X - 14, y, z))
 		addPathPoint(Vector3.new(base.X + 14, y, z))
@@ -613,6 +817,9 @@ do
 		scatter(m, pos, 8, { trees = 1, snow = true, lamps = 2, lampOffset = i })
 		coin(pos + Vector3.new(0, 3.5, 0))
 		coin(beltPos + Vector3.new(0, 4, 0))
+		if i == 2 or i == 4 then
+			newEnemy("slime", "patrol", { a = pos + Vector3.new(-3.5, 2.3, 0), b = pos + Vector3.new(3.5, 2.3, 0), speed = 6, phase = i })
+		end
 	end
 	pos = pos + dir * (r + 11 + 4)
 	cp4 = checkpoint(pos, 4, "نقطة حفظ 4 ✔", STYLE_ICE)
@@ -647,6 +854,9 @@ do
 		addPathPoint(center)
 		if i % 3 == 0 then
 			coin(center + Vector3.new(0, 4.5, 0))
+		end
+		if i == 4 or i == 8 then
+			newEnemy("ghost", "patrol", { a = center + Vector3.new(0, 3.2, -9), b = center + Vector3.new(0, 3.2, 9), speed = 7, phase = i })
 		end
 	end
 	local endPos = start + dir * (18.5 + (rows - 1) * 11 + 3.5 + 4 + 11) + Vector3.new(0, rows * 0.6 + 0.5, 0)
@@ -704,6 +914,9 @@ do
 	tl.Parent = trophy
 	local winPad = disc(summitTop + Vector3.new(0, 0.3, 0), 7, 0.6, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, m)
 	CollectionService:AddTag(winPad, "Win")
+	for g = 1, 3 do
+		newEnemy("guardian", "orbit", { center = summitTop + Vector3.new(0, 3.5, 0), radius = 12, speed = 1.0, phase = g * math.pi * 2 / 3 })
+	end
 	billboard(trophy, "🏆 القمة! 🏆", Color3.fromRGB(255, 230, 120))
 
 	local fw = pt({ Size = Vector3.new(1, 1, 1), Position = summitTop + Vector3.new(0, 14, 0),
@@ -867,6 +1080,11 @@ do
 		for _, s in ipairs(spinners) do
 			s.part.CFrame = CFrame.new(s.pivot) * CFrame.Angles(0, s.phase + t * s.speed, 0)
 		end
+		for _, e in ipairs(enemies) do
+			if e.alive then
+				updateEnemy(e, t)
+			end
+		end
 		for _, f in ipairs(floaters) do
 			local a = f.angle + t * f.speed
 			f.part.CFrame = CFrame.new(f.center + Vector3.new(math.cos(a) * f.radius, math.sin(t * 1.5 + f.bob) * 1.5, math.sin(a) * f.radius))
@@ -951,18 +1169,98 @@ local function toast(plr, text, color)
 	end)
 end
 
+-- ترقيات المتجر
+local pets = {}
+local addTrail -- تُعرَّف لاحقاً
+
+local function applyUpgrades(plr)
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not root then
+		return
+	end
+	hum.WalkSpeed = 18 + (plr:GetAttribute("Own_speed") and 6 or 0)
+	hum.UseJumpPower = true
+	hum.JumpPower = 55 + (plr:GetAttribute("Own_jump") and 15 or 0)
+	local maxH = plr:GetAttribute("Own_hearts") and 150 or 100
+	if hum.MaxHealth ~= maxH then
+		hum.MaxHealth = maxH
+		hum.Health = maxH
+	end
+	local tr = root:FindFirstChildOfClass("Trail")
+	if tr and plr:GetAttribute("Own_trail") then
+		tr.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 120)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 120, 30)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 20, 20)),
+		})
+		tr.Lifetime = 0.8
+	end
+	if pets[plr] then
+		pets[plr]:Destroy()
+		pets[plr] = nil
+	end
+	if plr:GetAttribute("Own_pet") then
+		local pet = pt({
+			Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 1.6, 1.6), Position = root.Position + Vector3.new(2, 3, 3),
+			Color = Color3.fromRGB(190, 120, 255), Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CanTouch = false,
+		}, Map)
+		local l = Instance.new("PointLight")
+		l.Range = 16
+		l.Color = pet.Color
+		l.Parent = pet
+		pets[plr] = pet
+	end
+end
+
+RunService.Heartbeat:Connect(function()
+	local t = os.clock()
+	for plr, pet in pairs(pets) do
+		local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+		if root and pet.Parent then
+			local target = (root.CFrame * CFrame.new(2.6, 2.4 + math.sin(t * 3) * 0.4, 3)).Position
+			pet.Position = pet.Position:Lerp(target, 0.18)
+		end
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+	if pets[plr] then
+		pets[plr]:Destroy()
+		pets[plr] = nil
+	end
+end)
+
 local function save(plr)
 	local ls = plr:FindFirstChild("leaderstats")
 	if not store or not ls then
 		return
 	end
 	pcall(function()
-		store:SetAsync("p" .. plr.UserId, { Coins = ls.Coins.Value, Wins = ls.Wins.Value })
+		local owned = {}
+		for _, it in ipairs(SHOP) do
+			if plr:GetAttribute("Own_" .. it.id) then
+				table.insert(owned, it.id)
+			end
+		end
+		store:SetAsync("p" .. plr.UserId, { Coins = ls.Coins.Value, Wins = ls.Wins.Value, Owned = owned })
 	end)
 end
 
 local function setupPlayer(plr)
 	plr.RespawnLocation = hubSpawn -- أول ظهور دائماً في الهب
+
+	local function onChar(char)
+		if addTrail then
+			addTrail(char)
+		end
+		applyUpgrades(plr)
+	end
+	plr.CharacterAdded:Connect(onChar)
+	if plr.Character then
+		task.spawn(onChar, plr.Character)
+	end
 
 	local ls = Instance.new("Folder")
 	ls.Name = "leaderstats"
@@ -982,6 +1280,12 @@ local function setupPlayer(plr)
 		if ok and type(data) == "table" then
 			coinsV.Value = data.Coins or 0
 			winsV.Value = data.Wins or 0
+			for _, id in ipairs(data.Owned or {}) do
+				if SHOP_BY_ID[id] then
+					plr:SetAttribute("Own_" .. id, true)
+				end
+			end
+			applyUpgrades(plr)
 		end
 	end
 	task.delay(2, function()
@@ -1054,6 +1358,7 @@ onTag("Checkpoint", function(cp)
 			sv.Value = stage
 			plr.RespawnLocation = cp
 			plr.leaderstats.Coins.Value = plr.leaderstats.Coins.Value + 5
+			sfx("checkpoint", cp, 0.8)
 			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(255, 220, 90), 60, 45)
 			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(110, 230, 255), 40, 35)
 			toast(plr, "✅ نقطة حفظ " .. stage .. " — +5 عملات", Color3.fromRGB(110, 255, 160))
@@ -1067,26 +1372,126 @@ onTag("Checkpoint", function(cp)
 end)
 
 -- العملات
+local function collectCoin(plr, c)
+	if c:GetAttribute("Taken") then
+		return
+	end
+	c:SetAttribute("Taken", true)
+	c.Transparency = 1
+	burst(c.Position, Color3.fromRGB(255, 215, 70), 14, 22)
+	sfx("coin", c, 0.5, 1 + math.random() * 0.2)
+	local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
+	if v then
+		v.Value = v.Value + 1
+	end
+	task.delay(15, function()
+		c.Transparency = 0
+		c:SetAttribute("Taken", nil)
+	end)
+end
+
 onTag("Coin", function(c)
 	c.Touched:Connect(function(hit)
 		if c:GetAttribute("Taken") then
 			return
 		end
 		local plr = fromHit(hit)
+		if plr then
+			collectCoin(plr, c)
+		end
+	end)
+end)
+
+-- مغناطيس العملات (من المتجر)
+task.spawn(function()
+	while true do
+		task.wait(0.15)
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr:GetAttribute("Own_magnet") then
+				local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+				if root then
+					for _, c in ipairs(coins) do
+						if not c.part:GetAttribute("Taken") and (c.part.Position - root.Position).Magnitude < 18 then
+							collectCoin(plr, c.part)
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- شراء من المتجر
+onTag("ShopItem", function(stand)
+	local prompt = stand:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		return
+	end
+	prompt.Triggered:Connect(function(plr)
+		local item = SHOP_BY_ID[stand:GetAttribute("ItemId")]
+		local ls = plr:FindFirstChild("leaderstats")
+		if not item or not ls then
+			return
+		end
+		local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+		if plr:GetAttribute("Own_" .. item.id) then
+			toast(plr, "تملك " .. item.name .. " بالفعل ✔", Color3.fromRGB(180, 200, 255))
+			return
+		end
+		if ls.Coins.Value < item.price then
+			toast(plr, "تحتاج " .. (item.price - ls.Coins.Value) .. " عملة إضافية 🪙", Color3.fromRGB(255, 120, 120))
+			sfx("deny", root, 0.6)
+			return
+		end
+		ls.Coins.Value = ls.Coins.Value - item.price
+		plr:SetAttribute("Own_" .. item.id, true)
+		applyUpgrades(plr)
+		toast(plr, "🛍 اشتريت " .. item.name .. "!", item.color)
+		sfx("buy", root, 0.8)
+		if root then
+			burst(root.Position, item.color, 50, 40)
+		end
+		save(plr)
+	end)
+end)
+
+-- الأعداء: دوس على الرأس لتقتل (الحارس لا يموت)، وإلا تتضرر وتُدفع للخلف
+onTag("Enemy", function(part)
+	part.Touched:Connect(function(hit)
+		local e = enemies[part:GetAttribute("EnemyId")]
+		if not e or not e.alive then
+			return
+		end
+		local plr, _, hum, root = fromHit(hit)
 		if not plr then
 			return
 		end
-		c:SetAttribute("Taken", true)
-		c.Transparency = 1
-		burst(c.Position, Color3.fromRGB(255, 215, 70), 14, 22)
-		local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
-		if v then
-			v.Value = v.Value + 1
+		local above = root.Position.Y > e.body.Position.Y + 1.5 and root.AssemblyLinearVelocity.Y < 8
+		if e.killable and above then
+			e.alive = false
+			burst(e.body.Position, e.body.Color, 40, 35)
+			sfx("stomp", root, 0.9)
+			e.model.Parent = nil
+			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 65, root.AssemblyLinearVelocity.Z)
+			local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
+			if v then
+				v.Value = v.Value + 3
+			end
+			toast(plr, "💥 قضيت على عدو! +3 عملات", Color3.fromRGB(255, 220, 120))
+			task.delay(12, function()
+				e.alive = true
+				e.model.Parent = Map
+			end)
+		elseif cooldown(plr.UserId .. "dmg", 1) then
+			hum:TakeDamage(e.dmg)
+			local away = (root.Position - e.body.Position) * Vector3.new(1, 0, 1)
+			if away.Magnitude < 0.1 then
+				away = Vector3.new(0, 0, 1)
+			end
+			root.AssemblyLinearVelocity = away.Unit * 55 + Vector3.new(0, 38, 0)
+			burst(root.Position, Color3.fromRGB(255, 70, 70), 18, 25)
+			sfx("hurt", root, 0.7)
 		end
-		task.delay(15, function()
-			c.Transparency = 0
-			c:SetAttribute("Taken", nil)
-		end)
 	end)
 end)
 
@@ -1100,6 +1505,7 @@ onTag("JumpPad", function(pad)
 		local v = root.AssemblyLinearVelocity
 		root.AssemblyLinearVelocity = Vector3.new(v.X, pad:GetAttribute("Power") or 110, v.Z)
 		hum:ChangeState(Enum.HumanoidStateType.Freefall)
+		sfx("jump", pad, 0.8, 1.5)
 	end)
 end)
 
@@ -1115,6 +1521,7 @@ onTag("Pusher", function(bar)
 			away = Vector3.new(0, 0, 1)
 		end
 		root.AssemblyLinearVelocity = away.Unit * 75 + Vector3.new(0, 45, 0)
+		sfx("push", bar, 0.7)
 	end)
 end)
 
@@ -1136,6 +1543,7 @@ onTag("FakeGlass", function(tile)
 		end
 		tile:SetAttribute("Broken", true)
 		burst(tile.Position, tile.Color, 30, 30)
+		sfx("glass", tile, 0.9)
 		task.wait(0.12)
 		local glow = tile:FindFirstChild("GlassGlow")
 		tile.Transparency = 1
@@ -1154,7 +1562,7 @@ onTag("FakeGlass", function(tile)
 end)
 
 -- ذيل ملوّن خلف اللاعب
-local function addTrail(char)
+addTrail = function(char)
 	local root = char:WaitForChild("HumanoidRootPart", 10)
 	if not root then
 		return
@@ -1175,16 +1583,6 @@ local function addTrail(char)
 	tr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	tr.Parent = root
 end
-Players.PlayerAdded:Connect(function(plr)
-	plr.CharacterAdded:Connect(addTrail)
-end)
-for _, plr in ipairs(Players:GetPlayers()) do
-	plr.CharacterAdded:Connect(addTrail)
-	if plr.Character then
-		task.spawn(addTrail, plr.Character)
-	end
-end
-
 -- الفوز
 onTag("Win", function(w)
 	w.Touched:Connect(function(hit)
@@ -1193,6 +1591,7 @@ onTag("Win", function(w)
 			return
 		end
 		local ls = plr.leaderstats
+		sfx("win", w, 1)
 		ls.Wins.Value = ls.Wins.Value + 1
 		ls.Coins.Value = ls.Coins.Value + 50
 		ls.Stage.Value = 0
@@ -1208,5 +1607,21 @@ onTag("Win", function(w)
 		save(plr)
 	end)
 end)
+
+if #MUSIC > 0 then
+	task.spawn(function()
+		local music = Instance.new("Sound")
+		music.Name = "BackgroundMusic"
+		music.Volume = 0.35
+		music.Parent = Workspace
+		local i = 1
+		while true do
+			music.SoundId = MUSIC[i]
+			music:Play()
+			music.Ended:Wait()
+			i = i % #MUSIC + 1
+		end
+	end)
+end
 
 print("[SkyIslands] تم بناء الماب بنجاح ✔")

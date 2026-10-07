@@ -1569,7 +1569,7 @@ end
 ------------------------------------------------------------------------
 do
 	pcall(function()
-		Workspace.Terrain:FillBlock(CFrame.new(0, 64, 0), Vector3.new(2000, 16, 2000), Enum.Material.Water)
+		Workspace.Terrain:FillBlock(CFrame.new(600, 68, 60), Vector3.new(1800, 8, 1000), Enum.Material.Water)
 	end)
 
 	local killPlane = pt({

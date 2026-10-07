@@ -53,11 +53,21 @@ local STYLE_GOLD = {
 	top = Color3.fromRGB(255, 226, 120), topMat = Enum.Material.Sand,
 	dirt = Color3.fromRGB(200, 150, 80), rock = Color3.fromRGB(150, 120, 90),
 }
+local STYLE_ICE = {
+	top = Color3.fromRGB(200, 238, 255), topMat = Enum.Material.Ice,
+	dirt = Color3.fromRGB(150, 200, 232), rock = Color3.fromRGB(110, 150, 195),
+}
+local STYLE_CRYSTAL = {
+	top = Color3.fromRGB(150, 110, 225), topMat = Enum.Material.Slate,
+	dirt = Color3.fromRGB(90, 62, 150), rock = Color3.fromRGB(58, 42, 100),
+}
 local FLOWER_COLORS = {
 	Color3.fromRGB(255, 105, 180), Color3.fromRGB(255, 220, 70), Color3.fromRGB(255, 255, 255),
 	Color3.fromRGB(170, 120, 255), Color3.fromRGB(255, 130, 80), Color3.fromRGB(90, 200, 255),
 }
 
+local floaters = {}
+local auroras = {}
 local pathPoints = {} -- نقاط المسار (لتجنب وضع الديكور فوقها)
 local spinners = {}
 local coins = {}
@@ -125,7 +135,7 @@ local function island(top, radius, style)
 	return m
 end
 
-local function tree(base, parent, scale)
+local function tree(base, parent, scale, snow)
 	scale = scale or 1
 	local h = 7 * scale
 	pt({
@@ -138,7 +148,11 @@ local function tree(base, parent, scale)
 	for i = 1, 3 do
 		local d = (9 - i * 1.8) * scale
 		local g = Color3.fromRGB(70 + i * 14, 165 + i * 8, 80)
-		ball(base + Vector3.new(0, h - 1 + (i - 1) * 2.2 * scale, 0), d, g, Enum.Material.Grass, parent, false)
+		if snow then
+			g = Color3.fromRGB(215 + i * 8, 232 + i * 5, 245)
+		end
+		ball(base + Vector3.new(0, h - 1 + (i - 1) * 2.2 * scale, 0), d, g,
+			snow and Enum.Material.SmoothPlastic or Enum.Material.Grass, parent, false)
 	end
 end
 
@@ -178,7 +192,7 @@ local function scatter(model, center, radius, o)
 		return center + Vector3.new(math.cos(ang) * r, 0, math.sin(ang) * r)
 	end
 	for _ = 1, o.trees or 0 do
-		tree(spot(0.6, 0.88), model, RNG:NextNumber(0.8, 1.3))
+		tree(spot(0.6, 0.88), model, RNG:NextNumber(0.8, 1.3), o.snow)
 	end
 	for _ = 1, o.flowers or 0 do
 		flower(spot(0.15, 0.92), model)
@@ -188,6 +202,56 @@ local function scatter(model, center, radius, o)
 		local ang = (i / n) * math.pi * 2 + (o.lampOffset or 0)
 		lamp(center + Vector3.new(math.cos(ang), 0, math.sin(ang)) * radius * 0.86, model, o.fire)
 	end
+end
+
+-- بلورة نيون
+local function crystal(pos, height, color, parent)
+	local c = pt({
+		Size = Vector3.new(2.4, height, 2.4),
+		CFrame = CFrame.new(pos + Vector3.new(0, height / 2, 0))
+			* CFrame.Angles(math.rad(RNG:NextNumber(-12, 12)), math.rad(RNG:NextNumber(0, 90)), math.rad(RNG:NextNumber(-12, 12))),
+		Color = color, Material = Enum.Material.Neon, Transparency = 0.12,
+	}, parent)
+	local l = Instance.new("PointLight")
+	l.Range = 12
+	l.Color = color
+	l.Parent = c
+	return c
+end
+
+-- انفجار جزيئات لحظي في مكان معين
+local function burst(pos, color, count, speed)
+	local a = pt({ Size = Vector3.new(1, 1, 1), Position = pos, Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false })
+	local e = Instance.new("ParticleEmitter")
+	e.Rate = 0
+	e.Lifetime = NumberRange.new(0.6, 1.2)
+	e.Speed = NumberRange.new(speed * 0.5, speed)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.Acceleration = Vector3.new(0, -30, 0)
+	e.LightEmission = 1
+	e.Color = ColorSequence.new(color)
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0) })
+	e.Parent = a
+	e:Emit(count)
+	game:GetService("Debris"):AddItem(a, 2)
+end
+
+-- هطول (ثلج / جزيئات ناعمة) فوق منطقة
+local function weather(center, size, color, rate, fall)
+	local a = pt({ Size = size, Position = center, Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false })
+	local e = Instance.new("ParticleEmitter")
+	e.Rate = rate
+	e.Lifetime = NumberRange.new(7, 9)
+	e.Speed = NumberRange.new(fall, fall + 3)
+	e.EmissionDirection = Enum.NormalId.Bottom
+	e.SpreadAngle = Vector2.new(20, 20)
+	e.RotSpeed = NumberRange.new(-60, 60)
+	e.Color = ColorSequence.new(color)
+	e.Size = NumberSequence.new(0.4)
+	e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.1, 0.2), NumberSequenceKeypoint.new(0.9, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	e.LightEmission = 0.4
+	e.Parent = a
+	return a
 end
 
 local function coin(pos)
@@ -350,6 +414,44 @@ do
 		local a = (i / 12) * math.pi * 2
 		coin(HUB_TOP + Vector3.new(math.cos(a) * 28, 3.5, math.sin(a) * 28))
 	end
+
+	-- بلورات عائمة تدور حول النافورة
+	for i = 1, 8 do
+		local c = pt({
+			Size = Vector3.new(2, 4.5, 2), Color = Color3.fromHSV(i / 8, 0.7, 1),
+			Material = Enum.Material.Neon, Transparency = 0.1,
+		}, m)
+		local l = Instance.new("PointLight")
+		l.Range = 14
+		l.Color = c.Color
+		l.Parent = c
+		table.insert(floaters, { part = c, center = HUB_TOP + Vector3.new(0, 13, 0), radius = 17, angle = (i / 8) * math.pi * 2, speed = 0.45, bob = i })
+	end
+
+	-- شلالات من حافة الجزيرة
+	for _, ang in ipairs({ 0.9, 2.4, 4.0, 5.4 }) do
+		local edge = HUB_TOP + Vector3.new(math.cos(ang) * 43.5, -2, math.sin(ang) * 43.5)
+		local fall = pt({
+			Size = Vector3.new(6, 70, 1.5),
+			CFrame = CFrame.lookAt(edge + Vector3.new(0, -34, 0), HUB_TOP + Vector3.new(0, -36, 0)),
+			Color = Color3.fromRGB(150, 215, 255), Material = Enum.Material.Glass, Transparency = 0.45, CanCollide = false,
+		}, m)
+		local mist = Instance.new("ParticleEmitter")
+		mist.Rate = 18
+		mist.Lifetime = NumberRange.new(2, 3)
+		mist.Speed = NumberRange.new(2, 5)
+		mist.SpreadAngle = Vector2.new(180, 180)
+		mist.Color = ColorSequence.new(Color3.fromRGB(235, 245, 255))
+		mist.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 3), NumberSequenceKeypoint.new(1, 8) })
+		mist.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1) })
+		mist.Parent = fall
+		local top = pt({ Size = Vector3.new(1, 1, 1), Position = edge + Vector3.new(0, -68, 0), Transparency = 1, CanCollide = false }, m)
+		local mist2 = mist:Clone()
+		mist2.Parent = top
+	end
+
+	-- يراعات متوهجة فوق الهب
+	weather(HUB_TOP + Vector3.new(0, 22, 0), Vector3.new(70, 1, 70), Color3.fromRGB(190, 255, 160), 10, 1)
 end
 
 ------------------------------------------------------------------------
@@ -468,12 +570,103 @@ do
 end
 
 ------------------------------------------------------------------------
--- المرحلة 4: برج النيون (اتجاه +X وللأعلى)
+-- المرحلة 4: الجبال الجليدية (اتجاه +Z) - سيور متحركة عكس اتجاهك
+------------------------------------------------------------------------
+local cp4
+do
+	local dir = Vector3.new(0, 0, 1)
+	local pos, r = cp3.Position - Vector3.new(0, 0.5, 0), 11
+	local startZ = pos.Z
+	local belts = {
+		{ len = 18, vel = Vector3.new(0, 0, -11), arrows = "▲▲▲" },
+		{ len = 20, vel = Vector3.new(9, 0, -3), arrows = "▶▶▶" },
+		{ len = 20, vel = Vector3.new(-9, 0, -3), arrows = "◀◀◀" },
+		{ len = 22, vel = Vector3.new(0, 0, -13), arrows = "▲▲▲" },
+	}
+	for i, b in ipairs(belts) do
+		local beltStart = pos + dir * (r - 0.5)
+		local beltPos = beltStart + dir * (b.len / 2) - Vector3.new(0, 0.5, 0)
+		local belt = pt({
+			Size = Vector3.new(i == 1 and 14 or 22, 1, b.len), Position = beltPos,
+			Color = Color3.fromRGB(60, 215, 255), Material = Enum.Material.Neon,
+		}, Map)
+		belt.AssemblyLinearVelocity = b.vel
+		local sg = Instance.new("SurfaceGui")
+		sg.Face = Enum.NormalId.Top
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		sg.PixelsPerStud = 25
+		sg.Parent = belt
+		local t = Instance.new("TextLabel")
+		t.Size = UDim2.fromScale(1, 1)
+		t.BackgroundTransparency = 1
+		t.TextScaled = true
+		t.Font = Enum.Font.GothamBlack
+		t.TextColor3 = Color3.fromRGB(20, 60, 110)
+		t.TextTransparency = 0.25
+		t.Text = b.arrows
+		t.Parent = sg
+		addPathPoint(beltPos)
+
+		local nextPos = beltStart + dir * b.len + dir * (8 - 0.5)
+		pos, r = nextPos, 8
+		local m = island(pos, 8, STYLE_ICE)
+		scatter(m, pos, 8, { trees = 1, snow = true, lamps = 2, lampOffset = i })
+		coin(pos + Vector3.new(0, 3.5, 0))
+		coin(beltPos + Vector3.new(0, 4, 0))
+	end
+	pos = pos + dir * (r + 11 + 4)
+	cp4 = checkpoint(pos, 4, "نقطة حفظ 4 ✔", STYLE_ICE)
+	weather((cp3.Position + pos) / 2 + Vector3.new(0, 45, 0), Vector3.new(90, 1, math.abs(pos.Z - startZ) + 80), Color3.fromRGB(255, 255, 255), 220, 8)
+end
+
+------------------------------------------------------------------------
+-- المرحلة 5: جسر الزجاج السحري (اتجاه +X) - اختر البلاطة الصحيحة!
+------------------------------------------------------------------------
+local cp5
+do
+	local dir = Vector3.new(1, 0, 0)
+	local start = cp4.Position - Vector3.new(0, 0.5, 0)
+	local glassRng = Random.new(os.time())
+	local rows = 10
+	for i = 1, rows do
+		local center = start + dir * (18.5 + (i - 1) * 11) + Vector3.new(0, i * 0.6, 0)
+		local real = glassRng:NextInteger(1, 2)
+		local color = Color3.fromHSV(((i - 1) / rows) * 0.8, 0.55, 1)
+		for lane = 1, 2 do
+			local tile = pt({
+				Size = Vector3.new(7, 1, 7), Position = center + Vector3.new(0, -0.5, lane == 1 and -5 or 5),
+				Color = color, Material = Enum.Material.Glass, Transparency = 0.3,
+			}, Map, lane ~= real and "FakeGlass" or nil)
+			local edge = pt({
+				Size = Vector3.new(7.2, 0.2, 7.2), Position = tile.Position + Vector3.new(0, 0.55, 0),
+				Color = color, Material = Enum.Material.Neon, Transparency = 0.55, CanCollide = false,
+			}, Map)
+			edge.Name = "GlassGlow"
+			edge.Parent = tile
+		end
+		addPathPoint(center)
+		if i % 3 == 0 then
+			coin(center + Vector3.new(0, 4.5, 0))
+		end
+	end
+	local endPos = start + dir * (18.5 + (rows - 1) * 11 + 3.5 + 4 + 11) + Vector3.new(0, rows * 0.6 + 0.5, 0)
+	cp5 = checkpoint(endPos, 5, "نقطة حفظ 5 ✔", STYLE_CRYSTAL)
+	local m = cp5.Parent
+	for k = 1, 9 do
+		local a = (k / 9) * math.pi * 2
+		crystal(endPos + Vector3.new(math.cos(a) * 9, 0, math.sin(a) * 9), RNG:NextNumber(4, 9),
+			Color3.fromHSV(RNG:NextNumber(0.7, 0.95), 0.6, 1), m)
+	end
+	weather(start + dir * 60 + Vector3.new(0, 30, 0), Vector3.new(60, 1, 150), Color3.fromRGB(230, 190, 255), 40, 3)
+end
+
+------------------------------------------------------------------------
+-- المرحلة 6: برج النيون (اتجاه -Z وللأعلى)
 ------------------------------------------------------------------------
 local summitTop
 do
-	local dir = Vector3.new(1, 0, 0)
-	local cur = cp3.Position - Vector3.new(0, 0.5, 0)
+	local dir = Vector3.new(0, 0, -1)
+	local cur = cp5.Position - Vector3.new(0, 0.5, 0)
 	local padPos = cur + dir * 3
 	jumpPad(padPos, 110, Map)
 	for i = 1, 5 do
@@ -589,6 +782,17 @@ do
 		end
 	end
 
+	-- شفق قطبي: شرائط نيون شفافة تتغير ألوانها
+	for i = 1, 3 do
+		local c = Vector3.new((minV.X + maxV.X) / 2, maxV.Y + 140 + i * 28, minV.Z - 260 - i * 60)
+		local ribbon = pt({
+			Size = Vector3.new(900, 90, 2), CFrame = CFrame.new(c) * CFrame.Angles(0, math.rad((i - 2) * 9), math.rad((i - 2) * 4)),
+			Color = Color3.fromHSV(0.35 + i * 0.12, 0.7, 1), Material = Enum.Material.Neon,
+			Transparency = 0.82, CanCollide = false, CanQuery = false, CanTouch = false,
+		}, decor)
+		table.insert(auroras, { part = ribbon, hue = 0.35 + i * 0.12, i = i })
+	end
+
 	-- غيوم
 	for _ = 1, 45 do
 		local p = randomSpot(35)
@@ -663,6 +867,15 @@ do
 		for _, s in ipairs(spinners) do
 			s.part.CFrame = CFrame.new(s.pivot) * CFrame.Angles(0, s.phase + t * s.speed, 0)
 		end
+		for _, f in ipairs(floaters) do
+			local a = f.angle + t * f.speed
+			f.part.CFrame = CFrame.new(f.center + Vector3.new(math.cos(a) * f.radius, math.sin(t * 1.5 + f.bob) * 1.5, math.sin(a) * f.radius))
+				* CFrame.Angles(t * 0.8, a, t * 0.5)
+		end
+		for _, au in ipairs(auroras) do
+			au.part.Color = Color3.fromHSV((au.hue + math.sin(t * 0.15 + au.i) * 0.12) % 1, 0.7, 1)
+			au.part.Transparency = 0.8 + math.sin(t * 0.4 + au.i * 2) * 0.06
+		end
 		acc = acc + dt
 		if acc >= 0.05 then
 			acc = 0
@@ -679,7 +892,10 @@ end
 ------------------------------------------------------------------------
 -- اللعب: بيانات اللاعب، نقاط الحفظ، العملات، القفز، الموت، الفوز
 ------------------------------------------------------------------------
-local STAGE_NAMES = { "🌸 جزر الزهور", "🌀 المنصات المتحركة", "🌋 بركان الدوّامات", "⚡ برج النيون" }
+local STAGE_NAMES = {
+	"🌸 جزر الزهور", "🌀 المنصات المتحركة", "🌋 بركان الدوّامات",
+	"❄️ الجبال الجليدية", "🔮 جسر الزجاج السحري", "⚡ برج النيون",
+}
 
 local store
 pcall(function()
@@ -838,6 +1054,8 @@ onTag("Checkpoint", function(cp)
 			sv.Value = stage
 			plr.RespawnLocation = cp
 			plr.leaderstats.Coins.Value = plr.leaderstats.Coins.Value + 5
+			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(255, 220, 90), 60, 45)
+			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(110, 230, 255), 40, 35)
 			toast(plr, "✅ نقطة حفظ " .. stage .. " — +5 عملات", Color3.fromRGB(110, 255, 160))
 			task.delay(3.6, function()
 				if STAGE_NAMES[stage + 1] and plr.Parent then
@@ -860,6 +1078,7 @@ onTag("Coin", function(c)
 		end
 		c:SetAttribute("Taken", true)
 		c.Transparency = 1
+		burst(c.Position, Color3.fromRGB(255, 215, 70), 14, 22)
 		local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
 		if v then
 			v.Value = v.Value + 1
@@ -908,6 +1127,63 @@ onTag("Kill", function(k)
 		end
 	end)
 end)
+
+-- زجاج مزيّف ينكسر عند اللمس ثم يعود
+onTag("FakeGlass", function(tile)
+	tile.Touched:Connect(function(hit)
+		if tile:GetAttribute("Broken") or not fromHit(hit) then
+			return
+		end
+		tile:SetAttribute("Broken", true)
+		burst(tile.Position, tile.Color, 30, 30)
+		task.wait(0.12)
+		local glow = tile:FindFirstChild("GlassGlow")
+		tile.Transparency = 1
+		tile.CanCollide = false
+		if glow then
+			glow.Transparency = 1
+		end
+		task.wait(6)
+		tile.Transparency = 0.3
+		tile.CanCollide = true
+		if glow then
+			glow.Transparency = 0.55
+		end
+		tile:SetAttribute("Broken", nil)
+	end)
+end)
+
+-- ذيل ملوّن خلف اللاعب
+local function addTrail(char)
+	local root = char:WaitForChild("HumanoidRootPart", 10)
+	if not root then
+		return
+	end
+	local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+	a0.Position = Vector3.new(0, 1.2, 0)
+	a1.Position = Vector3.new(0, -1.2, 0)
+	a0.Parent, a1.Parent = root, root
+	local tr = Instance.new("Trail")
+	tr.Attachment0, tr.Attachment1 = a0, a1
+	tr.Lifetime = 0.5
+	tr.LightEmission = 1
+	tr.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 160)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 220, 90)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 200, 255)),
+	})
+	tr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+	tr.Parent = root
+end
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(addTrail)
+end)
+for _, plr in ipairs(Players:GetPlayers()) do
+	plr.CharacterAdded:Connect(addTrail)
+	if plr.Character then
+		task.spawn(addTrail, plr.Character)
+	end
+end
 
 -- الفوز
 onTag("Win", function(w)

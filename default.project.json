@@ -1,0 +1,17 @@
+{
+  "name": "SkyIslands",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "SkyIslands": { "$path": "src/SkyIslands.server.lua" }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "SkyClient": { "$path": "src/SkyClient.client.lua" }
+      }
+    }
+  }
+}

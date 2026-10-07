@@ -39,6 +39,10 @@ local SFX = {
 }
 -- موسيقى الخلفية: ضع هنا أرقام موسيقى (مثل "rbxassetid://1234567890") وتتشغل بالتتابع
 local MUSIC = {}
+-- موسيقى الزعيم: تُشغَّل فقط للاعبين داخل ساحة الزعيم (ضع رقم موسيقى مثل "rbxassetid://1234567890")
+local BOSS_MUSIC = ""
+-- موسيقى الحديقة السرية: تُشغَّل فقط للاعبين داخلها
+local SECRET_MUSIC = ""
 
 local function sfx(key, parent, volume, pitch)
 	local id = SFX[key]
@@ -66,9 +70,22 @@ local SHOP = {
 	{ id = "pet", name = "رفيق متوهج", desc = "كرة مضيئة تتبعك", price = 50, color = Color3.fromRGB(190, 120, 255), shape = Enum.PartType.Ball },
 	{ id = "trail", name = "ذيل ناري", desc = "ذيل لهب ملوّن", price = 25, color = Color3.fromRGB(255, 130, 40), shape = Enum.PartType.Block },
 }
+-- المتجر الثاني (في الحديقة السرية): مظاهر وتأثيرات
+local SHOP2 = {
+	{ id = "halo", name = "هالة ذهبية", desc = "حلقة مضيئة فوق رأسك", price = 120, color = Color3.fromRGB(255, 220, 90), shape = Enum.PartType.Ball },
+	{ id = "wings", name = "أجنحة نيون", desc = "أجنحة متوهجة على ظهرك", price = 200, color = Color3.fromRGB(100, 220, 255), shape = Enum.PartType.Block },
+	{ id = "aura", name = "هالة شرارات", desc = "شرارات تحيط بك", price = 150, color = Color3.fromRGB(255, 160, 255), shape = Enum.PartType.Ball },
+	{ id = "ghost", name = "جسم متوهج", desc = "جسم يلمع كالزجاج", price = 100, color = Color3.fromRGB(180, 255, 235), shape = Enum.PartType.Cylinder },
+	{ id = "shield", name = "درع البداية", desc = "حماية 10 ثوانٍ عند كل ظهور", price = 90, color = Color3.fromRGB(120, 160, 255), shape = Enum.PartType.Block },
+	{ id = "startrail", name = "ذيل نجمي", desc = "ذيل ذهبي طويل", price = 70, color = Color3.fromRGB(255, 245, 170), shape = Enum.PartType.Block },
+}
+local ALL_ITEMS = {}
 local SHOP_BY_ID = {}
-for _, it in ipairs(SHOP) do
-	SHOP_BY_ID[it.id] = it
+for _, list in ipairs({ SHOP, SHOP2 }) do
+	for _, it in ipairs(list) do
+		table.insert(ALL_ITEMS, it)
+		SHOP_BY_ID[it.id] = it
+	end
 end
 
 ------------------------------------------------------------------------
@@ -401,6 +418,30 @@ local function coin(pos)
 	table.insert(coins, { part = c, pos = pos, phase = RNG:NextNumber(0, 6) })
 end
 
+-- نجمة سرية مخفية على جزيرة صغيرة جانبية (3 نجوم تفتح البوابة السرية في الهب)
+local function secretStar(top, id, style)
+	island(top, 4, style)
+	local st = pt({
+		Size = Vector3.new(2.6, 2.6, 2.6), Position = top + Vector3.new(0, 3.6, 0), Color = Color3.fromRGB(255, 235, 90),
+		Material = Enum.Material.Neon, CanCollide = false,
+	}, Map, "SecretStar")
+	st:SetAttribute("Id", id)
+	local l = Instance.new("PointLight")
+	l.Range = 20
+	l.Color = st.Color
+	l.Parent = st
+	local e = Instance.new("ParticleEmitter")
+	e.Rate = 12
+	e.Lifetime = NumberRange.new(1, 1.6)
+	e.Speed = NumberRange.new(2, 5)
+	e.SpreadAngle = Vector2.new(180, 180)
+	e.LightEmission = 1
+	e.Color = ColorSequence.new(Color3.fromRGB(255, 240, 120))
+	e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 0) })
+	e.Parent = st
+	table.insert(floaters, { part = st, center = top + Vector3.new(0, 3.6, 0), radius = 0, angle = 0, speed = 0, bob = id * 2 })
+end
+
 local function textSign(size, cf, text, face, bg, fg)
 	local p = pt({ Size = size, CFrame = cf, Color = bg, Material = Enum.Material.Metal })
 	local sg = Instance.new("SurfaceGui")
@@ -590,35 +631,32 @@ do
 end
 
 ------------------------------------------------------------------------
--- المتجر (في الهب): اقترب من أي عرض واضغط E للشراء
+-- المتاجر: اقترب من أي عرض واضغط E للشراء
 ------------------------------------------------------------------------
-do
+local function buildShop(title, center, items, accent)
 	local m = Instance.new("Model")
-	m.Name = "Shop"
+	m.Name = title
 	m.Parent = Map
-	local center = HUB_TOP + Vector3.new(-26, 0, -6)
 	disc(center + Vector3.new(0, 0.2, 0), 13, 0.4, Color3.fromRGB(70, 60, 95), Enum.Material.Slate, m)
-	disc(center + Vector3.new(0, 0.45, 0), 11.5, 0.2, Color3.fromRGB(120, 95, 170), Enum.Material.Neon, m).Transparency = 0.5
+	disc(center + Vector3.new(0, 0.45, 0), 11.5, 0.2, accent, Enum.Material.Neon, m).Transparency = 0.5
 
-	-- سقف وأعمدة
-	local roof = disc(center + Vector3.new(0, 14, 0), 13.5, 1, Color3.fromRGB(150, 90, 230), Enum.Material.Neon, m)
+	local roof = disc(center + Vector3.new(0, 14, 0), 13.5, 1, accent, Enum.Material.Neon, m)
 	roof.Transparency = 0.35
 	local rl = Instance.new("PointLight")
 	rl.Range = 40
 	rl.Brightness = 1.5
-	rl.Color = Color3.fromRGB(210, 160, 255)
+	rl.Color = accent
 	rl.Parent = roof
 	for i = 1, 6 do
 		local a = (i / 6) * math.pi * 2
 		pt({ Size = Vector3.new(1.2, 14, 1.2), Position = center + Vector3.new(math.cos(a) * 12.5, 7, math.sin(a) * 12.5),
 			Color = Color3.fromRGB(235, 235, 250), Material = Enum.Material.Marble }, m)
 	end
-	local title = pt({ Size = Vector3.new(1, 1, 1), Position = center + Vector3.new(0, 17.5, 0), Transparency = 1, CanCollide = false }, m)
-	billboard(title, "🛒 المتجر", Color3.fromRGB(255, 230, 120))
+	local sign = pt({ Size = Vector3.new(1, 1, 1), Position = center + Vector3.new(0, 17.5, 0), Transparency = 1, CanCollide = false }, m)
+	billboard(sign, title, Color3.fromRGB(255, 230, 120))
 
-	-- العروض على شكل قوس
-	for i, item in ipairs(SHOP) do
-		local a = math.pi * 0.5 + ((i - 1) / (#SHOP - 1)) * math.pi
+	for i, item in ipairs(items) do
+		local a = math.pi * 0.5 + ((i - 1) / (#items - 1)) * math.pi
 		local base = center + Vector3.new(math.cos(a) * 8.5, 0, math.sin(a) * 8.5)
 		local stand = disc(base + Vector3.new(0, 1, 0), 2.2, 1.6, Color3.fromRGB(235, 235, 245), Enum.Material.Marble, m)
 		stand:SetAttribute("ItemId", item.id)
@@ -658,7 +696,10 @@ do
 		pr.KeyboardKeyCode = Enum.KeyCode.E
 		pr.Parent = stand
 	end
+	return m
 end
+
+buildShop("🛒 المتجر", HUB_TOP + Vector3.new(-26, 0, -6), SHOP, Color3.fromRGB(150, 90, 230))
 
 ------------------------------------------------------------------------
 -- المرحلة 1: جزر الزهور (اتجاه -Z)
@@ -677,6 +718,9 @@ do
 		coin(pos + Vector3.new(0, 3.5, 0))
 		if i == 3 or i == 6 then
 			newEnemy("slime", "patrol", { a = pos + Vector3.new(-3.2, 2.3, 0), b = pos + Vector3.new(3.2, 2.3, 0), speed = 5, phase = i * 0.3 })
+		end
+		if i == 5 then
+			secretStar(pos + Vector3.new(16, 0.5, 0), 1, STYLE_GRASS)
 		end
 	end
 	pos = advance(pos, r, 11, 4, dir, 1.5)
@@ -831,6 +875,7 @@ do
 	end
 	pos = pos + dir * (r + 11 + 4)
 	cp4 = checkpoint(pos, 4, "نقطة حفظ 4 ✔", STYLE_ICE)
+	secretStar(pos + Vector3.new(-19, 1.5, 0), 2, STYLE_ICE)
 	weather((cp3.Position + pos) / 2 + Vector3.new(0, 45, 0), Vector3.new(90, 1, math.abs(pos.Z - startZ) + 80), Color3.fromRGB(255, 255, 255), 220, 8)
 end
 
@@ -902,6 +947,9 @@ do
 		light.Parent = m:FindFirstChildWhichIsA("BasePart")
 		addPathPoint(center)
 		coin(padPos + dir * 7 + Vector3.new(0, 20, 0))
+		if i == 3 then
+			secretStar(center + Vector3.new(14.5, 0, 0), 3, STYLE_CRYSTAL)
+		end
 		padPos = center
 		jumpPad(padPos, 110, m)
 	end
@@ -1087,6 +1135,136 @@ do
 		model = bm, body = body, fill = fill, label = lab, hp = 10, maxHp = 10, alive = true, vulnerable = false,
 		pos = spawnPos, target = spawnPos, face = top + Vector3.new(0, 14, 30),
 	}
+end
+
+------------------------------------------------------------------------
+-- المرحلة السرية: الحديقة الذهبية (بوابتها في الهب وتحتاج 3 نجوم مخفية) + المتجر الثاني
+------------------------------------------------------------------------
+local secret = {}
+do
+	-- بوابة في الهب
+	local hm = Instance.new("Model")
+	hm.Name = "SecretPortal"
+	hm.Parent = Map
+	local pc = HUB_TOP + Vector3.new(33, 8.5, -6)
+	pt({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.4, 17, 17), CFrame = CFrame.new(pc),
+		Color = Color3.fromRGB(150, 90, 255), Material = Enum.Material.Neon }, hm)
+	local inner = pt({ Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 13, 13), CFrame = CFrame.new(pc),
+		Color = Color3.fromRGB(80, 200, 255), Material = Enum.Material.Neon, Transparency = 0.35, CanCollide = false }, hm)
+	for _, dz in ipairs({ -8, 8 }) do
+		pt({ Size = Vector3.new(2.5, 18, 2.5), Position = HUB_TOP + Vector3.new(33, 9, -6 + dz * 1.15),
+			Color = Color3.fromRGB(40, 36, 70), Material = Enum.Material.Slate }, hm)
+	end
+	local pe = Instance.new("ParticleEmitter")
+	pe.Rate = 40
+	pe.Lifetime = NumberRange.new(1, 1.6)
+	pe.Speed = NumberRange.new(1, 4)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.LightEmission = 1
+	pe.Color = ColorSequence.new(Color3.fromRGB(190, 150, 255), Color3.fromRGB(120, 230, 255))
+	pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 0) })
+	pe.Parent = inner
+	local pl = Instance.new("PointLight")
+	pl.Range = 35
+	pl.Color = Color3.fromRGB(150, 120, 255)
+	pl.Parent = inner
+	billboard(inner, "؟ بوابة سرية ؟\nاجمع 3 نجوم مخفية ⭐", Color3.fromRGB(230, 200, 255))
+	local pr = Instance.new("ProximityPrompt")
+	pr.ActionText = "ادخل"
+	pr.ObjectText = "الحديقة الذهبية السرية"
+	pr.HoldDuration = 0.6
+	pr.MaxActivationDistance = 14
+	pr.RequiresLineOfSight = false
+	pr.Parent = inner
+	CollectionService:AddTag(inner, "SecretPortal")
+
+	-- العالم السري
+	local C = HUB_TOP + Vector3.new(0, 110, 430)
+	secret.center = C
+	local GOLDEN = { top = Color3.fromRGB(255, 214, 110), topMat = Enum.Material.Sand, dirt = Color3.fromRGB(190, 130, 70), rock = Color3.fromRGB(120, 90, 80) }
+
+	-- جزيرة البداية
+	local a = -0.5
+	local startPos = C + Vector3.new(math.cos(a) * 56, 0, math.sin(a) * 56)
+	local sm = island(startPos, 8, GOLDEN)
+	scatter(sm, startPos, 8, { flowers = 10, lamps = 2 })
+	local sp = Instance.new("SpawnLocation")
+	sp.Size = Vector3.new(6, 1, 6)
+	sp.Anchored = true
+	sp.Neutral = true
+	sp.Duration = 0
+	sp.Material = Enum.Material.Neon
+	sp.Color = Color3.fromRGB(255, 220, 90)
+	sp.CFrame = CFrame.new(startPos + Vector3.new(0, 0.5, 0))
+	for _, d in ipairs(sp:GetChildren()) do
+		if d:IsA("Decal") then
+			d:Destroy()
+		end
+	end
+	sp.Parent = sm
+	secret.spawn = sp
+	billboard(sp, "الحديقة السرية ✨", Color3.fromRGB(255, 240, 150))
+
+	-- حلزون صاعد من منصات قوس قزح
+	local ang, y = a, 0
+	for i = 1, 16 do
+		local R = 52 - i * 1.3
+		ang = ang + 13 / R
+		y = y + 3
+		local pos = C + Vector3.new(math.cos(ang) * R, y, math.sin(ang) * R)
+		local col = Color3.fromHSV((i / 16) % 1, 0.65, 1)
+		local m = Instance.new("Model")
+		m.Name = "SecretStep"
+		m.Parent = Map
+		disc(pos - Vector3.new(0, 0.6, 0), 4.4, 1.2, col, Enum.Material.Neon, m)
+		disc(pos - Vector3.new(0, 2, 0), 2.6, 1.6, Color3.fromRGB(70, 56, 100), Enum.Material.Slate, m)
+		local l = Instance.new("PointLight")
+		l.Range = 18
+		l.Color = col
+		l.Parent = m:FindFirstChildWhichIsA("BasePart")
+		coin(pos + Vector3.new(0, 3.5, 0))
+		addPathPoint(pos)
+		if i % 4 == 0 then
+			jumpPad(pos + Vector3.new(0, 0.6, 0), 70, m)
+		end
+	end
+
+	-- الجزيرة الكبيرة العلوية: الصندوق + المتجر الثاني + بوابة العودة
+	local topPos = C + Vector3.new(0, y + 3, 0)
+	local bm = island(topPos, 22, GOLDEN)
+	bm.Name = "TreasureIsland"
+	scatter(bm, topPos, 22, { flowers = 30, lamps = 6 })
+	buildShop("✨ متجر الكنوز", topPos + Vector3.new(0, 0, 8), SHOP2, Color3.fromRGB(255, 200, 80))
+
+	local chestPos = topPos + Vector3.new(0, 0, -14)
+	local base = pt({ Size = Vector3.new(6, 3, 4), Position = chestPos + Vector3.new(0, 1.5, 0),
+		Color = Color3.fromRGB(130, 84, 48), Material = Enum.Material.Wood }, bm, "Chest")
+	local lid = pt({ Size = Vector3.new(6.2, 1.6, 4.2), Position = chestPos + Vector3.new(0, 3.8, 0),
+		Color = Color3.fromRGB(255, 205, 40), Material = Enum.Material.Neon }, bm)
+	pt({ Size = Vector3.new(1, 1.4, 0.4), Position = chestPos + Vector3.new(0, 3, -2.2),
+		Color = Color3.fromRGB(255, 255, 200), Material = Enum.Material.Neon, CanCollide = false }, bm)
+	local cl = Instance.new("PointLight")
+	cl.Range = 30
+	cl.Brightness = 2
+	cl.Color = Color3.fromRGB(255, 220, 100)
+	cl.Parent = lid
+	billboard(base, "💰 صندوق الكنز", Color3.fromRGB(255, 230, 120))
+	secret.lid = lid
+	secret.lidClosed = lid.CFrame
+
+	local exitPos = topPos + Vector3.new(16, 0, -10)
+	local ex = disc(exitPos + Vector3.new(0, 0.3, 0), 4, 0.6, Color3.fromRGB(150, 90, 255), Enum.Material.Neon, bm)
+	billboard(ex, "العودة للهب 🏝", Color3.fromRGB(230, 200, 255))
+	local ep = Instance.new("ProximityPrompt")
+	ep.ActionText = "عودة"
+	ep.ObjectText = "الهب"
+	ep.HoldDuration = 0.5
+	ep.MaxActivationDistance = 12
+	ep.RequiresLineOfSight = false
+	ep.Parent = ex
+	CollectionService:AddTag(ex, "SecretExit")
+
+	weather(C + Vector3.new(0, 55, 0), Vector3.new(130, 1, 130), Color3.fromRGB(255, 235, 150), 60, 2, 6)
 end
 
 ------------------------------------------------------------------------
@@ -1322,6 +1500,80 @@ local function toast(plr, text, color)
 	end)
 end
 
+-- المظاهر (من المتجر الثاني)
+local function applyCosmetics(plr, char, root, hum)
+	for _, d in ipairs(char:GetDescendants()) do
+		if d.Name == "SkyCosmetic" then
+			d:Destroy()
+		end
+	end
+	local head = char:FindFirstChild("Head")
+	local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+	local function attach(part, to)
+		part.Name = "SkyCosmetic"
+		part.Anchored = false
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.Massless = true
+		part.Material = Enum.Material.Neon
+		part.Parent = char
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = to
+		w.Part1 = part
+		w.Parent = part
+	end
+	if plr:GetAttribute("Own_halo") and head then
+		for i = 1, 8 do
+			local a = (i / 8) * math.pi * 2
+			local b = Instance.new("Part")
+			b.Shape = Enum.PartType.Ball
+			b.Size = Vector3.new(0.45, 0.45, 0.45)
+			b.Color = Color3.fromRGB(255, 225, 90)
+			b.CFrame = head.CFrame * CFrame.new(math.cos(a) * 1.1, 1.5, math.sin(a) * 1.1)
+			attach(b, head)
+		end
+	end
+	if plr:GetAttribute("Own_wings") and torso then
+		for _, side in ipairs({ -1, 1 }) do
+			for k = 1, 3 do
+				local w = Instance.new("Part")
+				w.Size = Vector3.new(0.25, 3.2 - k * 0.6, 0.9)
+				w.Color = Color3.fromHSV(0.52 + k * 0.08, 0.6, 1)
+				w.Transparency = 0.15
+				w.CFrame = torso.CFrame * CFrame.new(side * (1.2 + k * 0.45), 1.2 - k * 0.5, 0.7)
+					* CFrame.Angles(0, 0, side * math.rad(-25 - k * 12))
+				attach(w, torso)
+			end
+		end
+	end
+	if plr:GetAttribute("Own_aura") then
+		local e = Instance.new("ParticleEmitter")
+		e.Name = "SkyCosmetic"
+		e.Rate = 30
+		e.Lifetime = NumberRange.new(0.8, 1.4)
+		e.Speed = NumberRange.new(3, 7)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.LightEmission = 1
+		e.Color = ColorSequence.new(Color3.fromRGB(255, 190, 255), Color3.fromRGB(255, 240, 150))
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(1, 0) })
+		e.Parent = root
+	end
+	if plr:GetAttribute("Own_ghost") then
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" and d.Name ~= "SkyCosmetic" then
+				d.Material = Enum.Material.ForceField
+			end
+		end
+	end
+	if plr:GetAttribute("Own_shield") and not char:FindFirstChildOfClass("ForceField") then
+		local ff = Instance.new("ForceField")
+		ff.Visible = true
+		ff.Parent = char
+		Debris:AddItem(ff, 10)
+	end
+end
+
 -- ترقيات المتجر
 local pets = {}
 local addTrail -- تُعرَّف لاحقاً
@@ -1350,6 +1602,15 @@ local function applyUpgrades(plr)
 		})
 		tr.Lifetime = 0.8
 	end
+	if tr and plr:GetAttribute("Own_startrail") then
+		tr.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 235, 140)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 170, 60)),
+		})
+		tr.Lifetime = 1.3
+	end
+	applyCosmetics(plr, char, root, hum)
 	if pets[plr] then
 		pets[plr]:Destroy()
 		pets[plr] = nil
@@ -1392,12 +1653,20 @@ local function save(plr)
 	end
 	pcall(function()
 		local owned = {}
-		for _, it in ipairs(SHOP) do
+		for _, it in ipairs(ALL_ITEMS) do
 			if plr:GetAttribute("Own_" .. it.id) then
 				table.insert(owned, it.id)
 			end
 		end
-		store:SetAsync("p" .. plr.UserId, { Coins = ls.Coins.Value, Wins = ls.Wins.Value, Owned = owned })
+		local stars = {}
+		for i = 1, 3 do
+			if plr:GetAttribute("Star" .. i) then
+				table.insert(stars, i)
+			end
+		end
+		store:SetAsync("p" .. plr.UserId, {
+			Coins = ls.Coins.Value, Wins = ls.Wins.Value, Owned = owned, Stars = stars, Secret = plr:GetAttribute("SecretDone") or false,
+		})
 	end)
 end
 
@@ -1437,6 +1706,12 @@ local function setupPlayer(plr)
 				if SHOP_BY_ID[id] then
 					plr:SetAttribute("Own_" .. id, true)
 				end
+			end
+			for _, id in ipairs(data.Stars or {}) do
+				plr:SetAttribute("Star" .. id, true)
+			end
+			if data.Secret then
+				plr:SetAttribute("SecretDone", true)
 			end
 			applyUpgrades(plr)
 		end
@@ -2042,6 +2317,136 @@ RunService.Heartbeat:Connect(function(dt)
 		at = boss.pos + Vector3.new(0, 0, -1)
 	end
 	boss.model:PivotTo(CFrame.lookAt(boss.pos + Vector3.new(0, bob, 0), at))
+end)
+
+-- النجوم السرية والبوابة والصندوق
+onTag("SecretStar", function(st)
+	st.Touched:Connect(function(hit)
+		local plr = fromHit(hit)
+		if not plr then
+			return
+		end
+		local id = st:GetAttribute("Id")
+		if plr:GetAttribute("Star" .. id) then
+			return
+		end
+		plr:SetAttribute("Star" .. id, true)
+		local n = 0
+		for i = 1, 3 do
+			n = n + (plr:GetAttribute("Star" .. i) and 1 or 0)
+		end
+		burst(st.Position, Color3.fromRGB(255, 235, 90), 50, 40)
+		sfx("checkpoint", st, 0.8, 1.3)
+		toast(plr, "⭐ نجمة سرية " .. n .. "/3" .. (n == 3 and " — البوابة السرية في الهب فُتحت!" or ""), Color3.fromRGB(255, 235, 110))
+		if n == 3 then
+			save(plr)
+		end
+	end)
+end)
+
+onTag("SecretPortal", function(part)
+	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		return
+	end
+	prompt.Triggered:Connect(function(plr)
+		local n = 0
+		for i = 1, 3 do
+			n = n + (plr:GetAttribute("Star" .. i) and 1 or 0)
+		end
+		if n < 3 then
+			toast(plr, "تحتاج 3 نجوم مخفية — لديك " .. n .. "/3 ⭐ (ابحث عن جزر صغيرة جانبية)", Color3.fromRGB(255, 200, 120))
+			sfx("deny", plr.Character and plr.Character:FindFirstChild("HumanoidRootPart"), 0.6)
+			return
+		end
+		local char = plr.Character
+		if char then
+			plr.RespawnLocation = secret.spawn
+			char:PivotTo(secret.spawn.CFrame + Vector3.new(0, 4, 0))
+			toast(plr, "🌟 مرحباً في الحديقة الذهبية السرية!", Color3.fromRGB(255, 230, 120))
+		end
+	end)
+end)
+
+onTag("SecretExit", function(part)
+	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		return
+	end
+	prompt.Triggered:Connect(function(plr)
+		plr.RespawnLocation = hubSpawn
+		if plr.Character then
+			plr.Character:PivotTo(hubSpawn.CFrame + Vector3.new(0, 4, 0))
+		end
+	end)
+end)
+
+onTag("Chest", function(chest)
+	local opening = false
+	chest.Touched:Connect(function(hit)
+		local plr = fromHit(hit)
+		if not plr or opening or not cooldown(plr.UserId .. "chest", 120) then
+			return
+		end
+		opening = true
+		local first = not plr:GetAttribute("SecretDone")
+		local reward = first and 150 or 20
+		plr:SetAttribute("SecretDone", true)
+		local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
+		if v then
+			v.Value = v.Value + reward
+		end
+		local lid, closed = secret.lid, secret.lidClosed
+		local hinge = closed * CFrame.new(0, -0.8, 2.1) * CFrame.Angles(math.rad(-70), 0, 0) * CFrame.new(0, 0.8, -2.1)
+		TweenService:Create(lid, TweenInfo.new(0.5, Enum.EasingStyle.Back), { CFrame = hinge }):Play()
+		burst(chest.Position + Vector3.new(0, 4, 0), Color3.fromRGB(255, 215, 70), 120, 55)
+		sfx("win", chest, 1)
+		toast(plr, first and "💰 فتحت صندوق الكنز! +150 عملة" or "💰 صندوق الكنز: +20 عملة", Color3.fromRGB(255, 225, 100))
+		save(plr)
+		task.delay(4, function()
+			TweenService:Create(lid, TweenInfo.new(0.4), { CFrame = closed }):Play()
+			opening = false
+		end)
+	end)
+end)
+
+-- موسيقى المناطق (لكل لاعب على حدة، تظهر فقط عندما يكون داخل المنطقة)
+local function zoneMusic(name, soundId, volume, inZone)
+	if not soundId or soundId == "" then
+		return
+	end
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			for _, plr in ipairs(Players:GetPlayers()) do
+				local pg = plr:FindFirstChildOfClass("PlayerGui")
+				local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+				if pg then
+					local snd = pg:FindFirstChild(name)
+					if not snd then
+						snd = Instance.new("Sound")
+						snd.Name = name
+						snd.SoundId = soundId
+						snd.Looped = true
+						snd.Volume = 0
+						snd.Parent = pg
+					end
+					local want = root ~= nil and inZone(root.Position)
+					if want and not snd.IsPlaying then
+						snd:Play()
+					end
+					TweenService:Create(snd, TweenInfo.new(1.2), { Volume = want and volume or 0 }):Play()
+				end
+			end
+		end
+	end)
+end
+
+zoneMusic("BossMusic", BOSS_MUSIC, 0.5, function(p)
+	return boss.alive and ((p - arena.center) * Vector3.new(1, 0, 1)).Magnitude < arena.radius + 14 and math.abs(p.Y - arena.center.Y) < 60
+end)
+zoneMusic("SecretMusic", SECRET_MUSIC, 0.45, function(p)
+	return (p - secret.center).Magnitude < 150 and p.Y > secret.center.Y - 20
 end)
 
 -- الفوز

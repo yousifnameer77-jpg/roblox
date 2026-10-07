@@ -21,6 +21,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local StarterPlayer = game:GetService("StarterPlayer")
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 -- قناة المؤثرات نحو سكربت العميل (اهتزاز الكاميرا، وميض الضرر...). اللعبة تعمل بدونه.
 local FxRemote = Instance.new("RemoteEvent")
@@ -84,6 +85,20 @@ local SHOP = {
 	{ id = "trail", name = "ذيل ناري", desc = "ذيل لهب ملوّن", price = 25, color = Color3.fromRGB(255, 130, 40), shape = Enum.PartType.Block },
 	{ id = "double", name = "قفزة مزدوجة", desc = "اضغط قفز مرتين (يتطلب سكربت العميل)", price = 80, color = Color3.fromRGB(255, 120, 200), shape = Enum.PartType.Ball },
 }
+
+-- المنتجات المدفوعة (Robux): أنشئها في Creator Hub ← Monetization ثم ضع أرقامها هنا.
+-- id = 0 يعني «غير مفعّل» (يظهر العرض في الهب لكنه لا يشتري شيئاً).
+local MONETIZATION = {
+	passes = {
+		{ key = "coins2x", id = 0, name = "عملات x2", desc = "كل عملة تجمعها أو عدو تقتله تعدّ بعملتين" },
+		{ key = "vip", id = 0, name = "VIP", desc = "ذيل ذهبي + مكافأة يومية مضاعفة" },
+	},
+	products = {
+		{ id = 0, name = "حزمة 500 عملة", coins = 500 },
+		{ id = 0, name = "حزمة 2500 عملة", coins = 2500 },
+	},
+}
+local receipts = {} -- UserId ← مجموعة أرقام الإيصالات المعالجة (لمنع المنح المزدوج)
 
 -- الإنجازات
 local ACH = {
@@ -1329,6 +1344,44 @@ do
 	pr.RequiresLineOfSight = false
 	pr.Parent = pad
 	CollectionService:AddTag(pad, "ResumePad")
+
+	-- ركن العروض المدفوعة (Robux)
+	local offers = {}
+	for _, gp in ipairs(MONETIZATION.passes) do
+		table.insert(offers, { kind = "pass", key = gp.key, id = gp.id, name = gp.name, desc = gp.desc })
+	end
+	for i, pr2 in ipairs(MONETIZATION.products) do
+		table.insert(offers, { kind = "product", key = "p" .. i, id = pr2.id, name = pr2.name, desc = pr2.coins .. " عملة" })
+	end
+	for i, o in ipairs(offers) do
+		local pos = HUB_TOP + Vector3.new(-34 + (i - 1) * 6, 0.3, 20)
+		local op = disc(pos, 2.2, 0.6, o.id == 0 and Color3.fromRGB(110, 110, 130) or Color3.fromRGB(80, 230, 140), Enum.Material.Neon, Map)
+		op:SetAttribute("Kind", o.kind)
+		op:SetAttribute("Key", o.key)
+		op:SetAttribute("OfferId", o.id)
+		local bb = Instance.new("BillboardGui")
+		bb.Size = UDim2.new(0, 170, 0, 56)
+		bb.StudsOffset = Vector3.new(0, 5, 0)
+		bb.MaxDistance = 45
+		bb.Parent = op
+		local tl = Instance.new("TextLabel")
+		tl.Size = UDim2.fromScale(1, 1)
+		tl.BackgroundTransparency = 1
+		tl.TextScaled = true
+		tl.Font = Enum.Font.GothamBlack
+		tl.TextColor3 = Color3.fromRGB(255, 255, 255)
+		tl.TextStrokeTransparency = 0.3
+		tl.Text = "💎 " .. o.name .. "\n" .. o.desc
+		tl.Parent = bb
+		local pr3 = Instance.new("ProximityPrompt")
+		pr3.ActionText = "شراء"
+		pr3.ObjectText = o.name
+		pr3.HoldDuration = 0.3
+		pr3.MaxActivationDistance = 10
+		pr3.RequiresLineOfSight = false
+		pr3.Parent = op
+		CollectionService:AddTag(op, "RobuxOffer")
+	end
 end
 
 ------------------------------------------------------------------------
@@ -1856,6 +1909,13 @@ local function applyUpgrades(plr)
 		})
 		tr.Lifetime = 1.3
 	end
+	if tr and plr:GetAttribute("Pass_vip") and not plr:GetAttribute("Own_startrail") then
+		tr.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 150)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 190, 40)),
+		})
+		tr.Lifetime = 1
+	end
 	applyCosmetics(plr, char, root, hum)
 	if pets[plr] then
 		pets[plr]:Destroy()
@@ -1920,6 +1980,13 @@ local function save(plr)
 			Coins = ls.Coins.Value, Wins = ls.Wins.Value, Owned = owned, Stars = stars, Secret = plr:GetAttribute("SecretDone") or false,
 			Best = ls.Best.Value, Deaths = ls.Deaths.Value, Ach = ach, TotalCoins = plr:GetAttribute("TotalCoins") or 0,
 			Kills = plr:GetAttribute("Kills") or 0, LastDay = plr:GetAttribute("LastDay"), Streak = plr:GetAttribute("Streak") or 0,
+			Receipts = (function()
+				local list = {}
+				for id in pairs(receipts[plr.UserId] or {}) do
+					table.insert(list, id)
+				end
+				return list
+			end)(),
 		})
 	end)
 end
@@ -2011,6 +2078,10 @@ local function setupPlayer(plr)
 				end
 			end
 			plr:SetAttribute("AchCount", achCount)
+			receipts[plr.UserId] = {}
+			for _, rid in ipairs(data.Receipts or {}) do
+				receipts[plr.UserId][rid] = true
+			end
 			for _, id in ipairs(data.Owned or {}) do
 				if SHOP_BY_ID[id] then
 					plr:SetAttribute("Own_" .. id, true)
@@ -2031,6 +2102,18 @@ local function setupPlayer(plr)
 		end
 	end)
 
+	-- ملكية الـ Game Pass
+	for _, gp in ipairs(MONETIZATION.passes) do
+		if gp.id ~= 0 then
+			local okp, owns = pcall(function()
+				return MarketplaceService:UserOwnsGamePassAsync(plr.UserId, gp.id)
+			end)
+			if okp and owns then
+				plr:SetAttribute("Pass_" .. gp.key, true)
+			end
+		end
+	end
+
 	-- مكافأة يومية: تزداد مع تتابع الأيام (حتى 7)
 	local today = math.floor(os.time() / 86400)
 	local last = plr:GetAttribute("LastDay")
@@ -2038,7 +2121,7 @@ local function setupPlayer(plr)
 		local streak = (last == today - 1) and ((plr:GetAttribute("Streak") or 0) + 1) or 1
 		plr:SetAttribute("LastDay", today)
 		plr:SetAttribute("Streak", streak)
-		local reward = 10 * math.min(streak, 7)
+		local reward = 10 * math.min(streak, 7) * (plr:GetAttribute("Pass_vip") and 2 or 1)
 		coinsV.Value = coinsV.Value + reward
 		task.delay(5, function()
 			if plr.Parent then
@@ -2138,7 +2221,7 @@ local function collectCoin(plr, c)
 	sfx("coin", c, 0.5, 1 + math.random() * 0.2)
 	local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
 	if v then
-		v.Value = v.Value + 1
+		v.Value = v.Value + (plr:GetAttribute("Pass_coins2x") and 2 or 1)
 	end
 	local total = (plr:GetAttribute("TotalCoins") or 0) + 1
 	plr:SetAttribute("TotalCoins", total)
@@ -2245,7 +2328,7 @@ onTag("Enemy", function(part)
 			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 65, root.AssemblyLinearVelocity.Z)
 			local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
 			if v then
-				v.Value = v.Value + 3
+				v.Value = v.Value + (plr:GetAttribute("Pass_coins2x") and 6 or 3)
 			end
 			toast(plr, "💥 قضيت على عدو! +3 عملات", Color3.fromRGB(255, 220, 120))
 			local kills = (plr:GetAttribute("Kills") or 0) + 1
@@ -3053,6 +3136,68 @@ end)
 zoneMusic("SecretMusic", SECRET_MUSIC, 0.45, function(p)
 	return (p - secret.center).Magnitude < 150 and p.Y > secret.center.Y - 20
 end)
+
+-- العروض المدفوعة
+onTag("RobuxOffer", function(pad)
+	local prompt = pad:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		return
+	end
+	prompt.Triggered:Connect(function(plr)
+		local kind, key, id = pad:GetAttribute("Kind"), pad:GetAttribute("Key"), pad:GetAttribute("OfferId")
+		if id == 0 then
+			toast(plr, "🚧 هذا العرض غير مفعّل بعد", Color3.fromRGB(255, 200, 120))
+			return
+		end
+		if kind == "pass" then
+			if plr:GetAttribute("Pass_" .. key) then
+				toast(plr, "تملك هذا العرض بالفعل ✔", Color3.fromRGB(180, 200, 255))
+				return
+			end
+			MarketplaceService:PromptGamePassPurchase(plr, id)
+		else
+			MarketplaceService:PromptProductPurchase(plr, id)
+		end
+	end)
+end)
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(plr, passId, purchased)
+	if not purchased then
+		return
+	end
+	for _, gp in ipairs(MONETIZATION.passes) do
+		if gp.id == passId then
+			plr:SetAttribute("Pass_" .. gp.key, true)
+			applyUpgrades(plr)
+			toast(plr, "💎 شكراً لدعمك! تم تفعيل " .. gp.name, Color3.fromRGB(120, 255, 180))
+		end
+	end
+end)
+
+MarketplaceService.ProcessReceipt = function(info)
+	local plr = Players:GetPlayerByUserId(info.PlayerId)
+	if not plr then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	receipts[plr.UserId] = receipts[plr.UserId] or {}
+	if receipts[plr.UserId][info.PurchaseId] then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+	for _, prod in ipairs(MONETIZATION.products) do
+		if prod.id ~= 0 and prod.id == info.ProductId then
+			local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
+			if not v then
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+			v.Value = v.Value + prod.coins
+			receipts[plr.UserId][info.PurchaseId] = true
+			toast(plr, "💎 شكراً لدعمك! +" .. prod.coins .. " عملة", Color3.fromRGB(120, 255, 180))
+			save(plr)
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+	end
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
 
 -- أدوات الاختبار (Studio فقط)
 if RunService:IsStudio() then

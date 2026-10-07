@@ -11,6 +11,8 @@
 لحفظ التقدم: `Game Settings ← Security ← Enable Studio Access to API Services`.
 (بديل: Rojo — الملف `default.project.json` جاهز ويضم السكربتين: `rojo serve`.)
 
+> 🧪 **للاختبار:** راجع `TESTING.md`. داخل Studio فقط تظهر أزرار 🛠 في الهب (يمين النافورة) تنقلك لأي مرحلة أو زعيم مباشرة.
+
 ## المراحل
 | # | المرحلة | الوصف |
 |---|---|---|

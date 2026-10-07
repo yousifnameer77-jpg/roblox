@@ -1462,6 +1462,56 @@ do
 end
 
 ------------------------------------------------------------------------
+-- أدوات الاختبار: تظهر داخل Studio فقط (لا تُبنى في السيرفرات المنشورة)
+------------------------------------------------------------------------
+if RunService:IsStudio() then
+	local dm = Instance.new("Model")
+	dm.Name = "DEBUG_TOOLS"
+	dm.Parent = Map
+	local actions = {}
+	for n = 1, 9 do
+		table.insert(actions, { "المرحلة " .. n, "stage", n })
+	end
+	table.insert(actions, { "ساحة تيتان", "arena1", 0 })
+	table.insert(actions, { "ساحة سيّد العدم", "arena2", 0 })
+	table.insert(actions, { "الحديقة السرية", "secret", 0 })
+	table.insert(actions, { "+500 عملة", "coins", 0 })
+	table.insert(actions, { "كل النجوم", "stars", 0 })
+	table.insert(actions, { "فتح البوابة", "gate", 0 })
+	table.insert(actions, { "شفاء كامل", "heal", 0 })
+	for i, a in ipairs(actions) do
+		local col = math.floor((i - 1) / 8)
+		local row = (i - 1) % 8
+		local pos = HUB_TOP + Vector3.new(27 + col * 5, 0.3, 8 + row * 3.2)
+		local pad = disc(pos, 1.3, 0.6, Color3.fromRGB(255, 80, 80), Enum.Material.Neon, dm)
+		pad:SetAttribute("Action", a[2])
+		pad:SetAttribute("Arg", a[3])
+		local bb = Instance.new("BillboardGui")
+		bb.Size = UDim2.new(0, 130, 0, 30)
+		bb.StudsOffset = Vector3.new(0, 3, 0)
+		bb.MaxDistance = 28
+		bb.Parent = pad
+		local t = Instance.new("TextLabel")
+		t.Size = UDim2.fromScale(1, 1)
+		t.BackgroundTransparency = 1
+		t.TextScaled = true
+		t.Font = Enum.Font.GothamBold
+		t.TextColor3 = Color3.fromRGB(255, 220, 220)
+		t.TextStrokeTransparency = 0.4
+		t.Text = "🛠 " .. a[1]
+		t.Parent = bb
+		local pr = Instance.new("ProximityPrompt")
+		pr.ActionText = "تجربة"
+		pr.ObjectText = a[1]
+		pr.HoldDuration = 0
+		pr.MaxActivationDistance = 5
+		pr.RequiresLineOfSight = false
+		pr.Parent = pad
+		CollectionService:AddTag(pad, "DebugPad")
+	end
+end
+
+------------------------------------------------------------------------
 -- ديكور: محيط، جزر بعيدة، غيوم، خط الموت
 ------------------------------------------------------------------------
 do
@@ -3003,6 +3053,55 @@ end)
 zoneMusic("SecretMusic", SECRET_MUSIC, 0.45, function(p)
 	return (p - secret.center).Magnitude < 150 and p.Y > secret.center.Y - 20
 end)
+
+-- أدوات الاختبار (Studio فقط)
+if RunService:IsStudio() then
+	onTag("DebugPad", function(pad)
+		local pr = pad:FindFirstChildOfClass("ProximityPrompt")
+		if not pr then
+			return
+		end
+		pr.Triggered:Connect(function(plr)
+			local action, arg = pad:GetAttribute("Action"), pad:GetAttribute("Arg")
+			local char, ls = plr.Character, plr:FindFirstChild("leaderstats")
+			if not char or not ls then
+				return
+			end
+			local function tp(cf)
+				char:PivotTo(cf + Vector3.new(0, 4, 0))
+			end
+			if action == "stage" then
+				local sp = checkpointsByStage[arg]
+				if sp then
+					ls.Stage.Value = math.max(ls.Stage.Value, arg)
+					plr.RespawnLocation = sp
+					tp(sp.CFrame)
+				end
+			elseif action == "arena1" then
+				tp(CFrame.new(arena.center + Vector3.new(0, 1, 28)))
+			elseif action == "arena2" then
+				tp(CFrame.new(arena2.center + Vector3.new(0, 1, 32)))
+			elseif action == "secret" then
+				plr.RespawnLocation = secret.spawn
+				tp(secret.spawn.CFrame)
+			elseif action == "coins" then
+				ls.Coins.Value = ls.Coins.Value + 500
+			elseif action == "stars" then
+				for i = 1, 3 do
+					plr:SetAttribute("Star" .. i, true)
+				end
+				toast(plr, "⭐ حصلت على النجوم الثلاث", Color3.fromRGB(255, 235, 110))
+			elseif action == "gate" then
+				setGate(true)
+			elseif action == "heal" then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					hum.Health = hum.MaxHealth
+				end
+			end
+		end)
+	end)
+end
 
 -- خط البداية: يبدأ عدّاد الزمن عند عبور بوابة الهب (والمرحلة 0)
 onTag("StartLine", function(part)

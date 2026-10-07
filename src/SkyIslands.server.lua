@@ -20,6 +20,17 @@ local CollectionService = game:GetService("CollectionService")
 local DataStoreService = game:GetService("DataStoreService")
 local StarterPlayer = game:GetService("StarterPlayer")
 local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- قناة المؤثرات نحو سكربت العميل (اهتزاز الكاميرا، وميض الضرر...). اللعبة تعمل بدونه.
+local FxRemote = Instance.new("RemoteEvent")
+FxRemote.Name = "SkyFx"
+FxRemote.Parent = ReplicatedStorage
+local function fx(plr, name, a, b)
+	if plr then
+		FxRemote:FireClient(plr, name, a, b)
+	end
+end
 
 ------------------------------------------------------------------------
 -- الأصوات: أصوات Roblox المدمجة (rbxasset). يمكنك استبدال أي قيمة برقم من
@@ -71,7 +82,26 @@ local SHOP = {
 	{ id = "magnet", name = "مغناطيس العملات", desc = "يجذب العملات القريبة", price = 60, color = Color3.fromRGB(255, 205, 40), shape = Enum.PartType.Ball },
 	{ id = "pet", name = "رفيق متوهج", desc = "كرة مضيئة تتبعك", price = 50, color = Color3.fromRGB(190, 120, 255), shape = Enum.PartType.Ball },
 	{ id = "trail", name = "ذيل ناري", desc = "ذيل لهب ملوّن", price = 25, color = Color3.fromRGB(255, 130, 40), shape = Enum.PartType.Block },
+	{ id = "double", name = "قفزة مزدوجة", desc = "اضغط قفز مرتين (يتطلب سكربت العميل)", price = 80, color = Color3.fromRGB(255, 120, 200), shape = Enum.PartType.Ball },
 }
+
+-- الإنجازات
+local ACH = {
+	{ id = "coins100", name = "جامع العملات (100 عملة)", reward = 20 },
+	{ id = "kills10", name = "صيّاد الوحوش (10 أعداء)", reward = 30 },
+	{ id = "explorer", name = "المستكشف (3 نجوم سرية)", reward = 40 },
+	{ id = "shopper", name = "المتسوّق (3 مشتريات)", reward = 25 },
+	{ id = "treasure", name = "صائد الكنوز", reward = 30 },
+	{ id = "voidwalker", name = "ماشي في العدم", reward = 60 },
+	{ id = "boss1", name = "قاهر تيتان السماء", reward = 50 },
+	{ id = "boss2", name = "قاتل سيّد العدم", reward = 120 },
+	{ id = "champion", name = "بطل جزر السماء", reward = 100 },
+	{ id = "speedy", name = "الصاروخ (أقل من 10 دقائق)", reward = 150 },
+}
+local ACH_BY_ID = {}
+for _, a in ipairs(ACH) do
+	ACH_BY_ID[a.id] = a
+end
 -- المتجر الثاني (في الحديقة السرية): مظاهر وتأثيرات
 local SHOP2 = {
 	{ id = "halo", name = "هالة ذهبية", desc = "حلقة مضيئة فوق رأسك", price = 120, color = Color3.fromRGB(255, 220, 90), shape = Enum.PartType.Ball },
@@ -512,6 +542,7 @@ local function billboard(parent, text, color)
 	t.Parent = bb
 end
 
+local checkpointsByStage = {}
 local function checkpoint(top, stage, label, style)
 	local m = island(top, 11, style)
 	scatter(m, top, 11, { flowers = style == STYLE_GRASS and 16 or 0, lamps = 3, fire = style == STYLE_VOLCANO })
@@ -532,6 +563,7 @@ local function checkpoint(top, stage, label, style)
 	end
 	sp.Parent = m
 	CollectionService:AddTag(sp, "Checkpoint")
+	checkpointsByStage[stage] = sp
 	billboard(sp, label, Color3.fromRGB(255, 255, 255))
 	return sp
 end
@@ -595,6 +627,7 @@ do
 	hubSpawn.Color = Color3.fromRGB(255, 190, 70)
 	hubSpawn.CFrame = CFrame.new(HUB_TOP + Vector3.new(0, 0.5, 24))
 	hubSpawn:SetAttribute("Stage", 0)
+	checkpointsByStage[0] = hubSpawn
 	for _, d in ipairs(hubSpawn:GetChildren()) do
 		if d:IsA("Decal") then
 			d:Destroy()
@@ -795,8 +828,8 @@ do
 		TweenService:Create(p, TweenInfo.new(vertical and 3 or 3.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Position = b }):Play()
 		coin(Vector3.new(base.X, y + 5.5, z))
-		if k == 3 or k == 5 then
-			newEnemy("drone", "orbit", { center = Vector3.new(base.X, y + 4, z), radius = 11, speed = 1.3, phase = k })
+		if i == 3 or i == 5 then
+			newEnemy("drone", "orbit", { center = Vector3.new(base.X, y + 4, z), radius = 11, speed = 1.3, phase = i })
 		end
 		addPathPoint(Vector3.new(base.X, y, z))
 		addPathPoint(Vector3.new(base.X - 14, y, z))
@@ -1279,6 +1312,26 @@ do
 end
 
 ------------------------------------------------------------------------
+-- خط البداية وقاعدة العودة السريعة (الهب)
+------------------------------------------------------------------------
+do
+	pt({
+		Size = Vector3.new(22, 14, 2), Position = HUB_TOP + Vector3.new(0, 7, -40),
+		Transparency = 1, CanCollide = false, CanQuery = false,
+	}, Map, "StartLine")
+	local pad = disc(HUB_TOP + Vector3.new(15, 0.3, 14), 3.2, 0.6, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, Map)
+	billboard(pad, "⚡ آخر نقطة حفظ", Color3.fromRGB(255, 240, 150))
+	local pr = Instance.new("ProximityPrompt")
+	pr.ActionText = "انتقال"
+	pr.ObjectText = "آخر نقطة حفظ"
+	pr.HoldDuration = 0.4
+	pr.MaxActivationDistance = 12
+	pr.RequiresLineOfSight = false
+	pr.Parent = pad
+	CollectionService:AddTag(pad, "ResumePad")
+end
+
+------------------------------------------------------------------------
 -- المرحلة السرية: الحديقة الذهبية (بوابتها في الهب وتحتاج 3 نجوم مخفية) + المتجر الثاني
 ------------------------------------------------------------------------
 local secret = {}
@@ -1726,7 +1779,9 @@ local function applyUpgrades(plr)
 	if not hum or not root then
 		return
 	end
-	hum.WalkSpeed = 18 + (plr:GetAttribute("Own_speed") and 6 or 0)
+	local speed = 18 + (plr:GetAttribute("Own_speed") and 6 or 0)
+	plr:SetAttribute("BaseSpeed", speed)
+	hum.WalkSpeed = speed
 	hum.UseJumpPower = true
 	hum.JumpPower = 55 + (plr:GetAttribute("Own_jump") and 15 or 0)
 	local maxH = plr:GetAttribute("Own_hearts") and 150 or 100
@@ -1805,10 +1860,49 @@ local function save(plr)
 				table.insert(stars, i)
 			end
 		end
+		local ach = {}
+		for _, a in ipairs(ACH) do
+			if plr:GetAttribute("Ach_" .. a.id) then
+				table.insert(ach, a.id)
+			end
+		end
 		store:SetAsync("p" .. plr.UserId, {
 			Coins = ls.Coins.Value, Wins = ls.Wins.Value, Owned = owned, Stars = stars, Secret = plr:GetAttribute("SecretDone") or false,
+			Best = ls.Best.Value, Deaths = ls.Deaths.Value, Ach = ach, TotalCoins = plr:GetAttribute("TotalCoins") or 0,
+			Kills = plr:GetAttribute("Kills") or 0, LastDay = plr:GetAttribute("LastDay"), Streak = plr:GetAttribute("Streak") or 0,
 		})
 	end)
+end
+
+-- منح إنجاز (مرة واحدة)
+local function achieve(plr, id)
+	local a = ACH_BY_ID[id]
+	if not a or plr:GetAttribute("Ach_" .. id) then
+		return
+	end
+	plr:SetAttribute("Ach_" .. id, true)
+	local n = 0
+	for _, x in ipairs(ACH) do
+		if plr:GetAttribute("Ach_" .. x.id) then
+			n = n + 1
+		end
+	end
+	plr:SetAttribute("AchCount", n)
+	local ls = plr:FindFirstChild("leaderstats")
+	if ls then
+		ls.Coins.Value = ls.Coins.Value + a.reward
+	end
+	local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+	if root then
+		burst(root.Position + Vector3.new(0, 3, 0), Color3.fromRGB(255, 215, 80), 60, 40)
+		sfx("checkpoint", root, 0.9, 1.2)
+	end
+	task.delay(1.2, function()
+		if plr.Parent then
+			toast(plr, "🏅 إنجاز: " .. a.name .. " (+" .. a.reward .. ")", Color3.fromRGB(255, 215, 90))
+		end
+	end)
+	fx(plr, "achievement", a.name)
 end
 
 local function setupPlayer(plr)
@@ -1819,6 +1913,15 @@ local function setupPlayer(plr)
 			addTrail(char)
 		end
 		applyUpgrades(plr)
+		local hum = char:WaitForChild("Humanoid", 5)
+		if hum then
+			hum.Died:Connect(function()
+				local l = plr:FindFirstChild("leaderstats")
+				if l and l:FindFirstChild("Deaths") then
+					l.Deaths.Value = l.Deaths.Value + 1
+				end
+			end)
+		end
 	end
 	plr.CharacterAdded:Connect(onChar)
 	if plr.Character then
@@ -1834,6 +1937,7 @@ local function setupPlayer(plr)
 		return v
 	end
 	local stageV, coinsV, winsV = stat("Stage"), stat("Coins"), stat("Wins")
+	local bestV, deathsV = stat("Best"), stat("Deaths")
 	ls.Parent = plr
 
 	if store then
@@ -1843,6 +1947,20 @@ local function setupPlayer(plr)
 		if ok and type(data) == "table" then
 			coinsV.Value = data.Coins or 0
 			winsV.Value = data.Wins or 0
+			bestV.Value = data.Best or 0
+			deathsV.Value = data.Deaths or 0
+			plr:SetAttribute("TotalCoins", data.TotalCoins or 0)
+			plr:SetAttribute("Kills", data.Kills or 0)
+			plr:SetAttribute("LastDay", data.LastDay)
+			plr:SetAttribute("Streak", data.Streak or 0)
+			local achCount = 0
+			for _, id in ipairs(data.Ach or {}) do
+				if ACH_BY_ID[id] then
+					plr:SetAttribute("Ach_" .. id, true)
+					achCount = achCount + 1
+				end
+			end
+			plr:SetAttribute("AchCount", achCount)
 			for _, id in ipairs(data.Owned or {}) do
 				if SHOP_BY_ID[id] then
 					plr:SetAttribute("Own_" .. id, true)
@@ -1862,6 +1980,22 @@ local function setupPlayer(plr)
 			toast(plr, "أهلاً! اتجه للبوابة وابدأ المغامرة 🌈", Color3.fromRGB(255, 230, 120))
 		end
 	end)
+
+	-- مكافأة يومية: تزداد مع تتابع الأيام (حتى 7)
+	local today = math.floor(os.time() / 86400)
+	local last = plr:GetAttribute("LastDay")
+	if last ~= today then
+		local streak = (last == today - 1) and ((plr:GetAttribute("Streak") or 0) + 1) or 1
+		plr:SetAttribute("LastDay", today)
+		plr:SetAttribute("Streak", streak)
+		local reward = 10 * math.min(streak, 7)
+		coinsV.Value = coinsV.Value + reward
+		task.delay(5, function()
+			if plr.Parent then
+				toast(plr, "🎁 مكافأة يومية +" .. reward .. " عملة (اليوم " .. streak .. " على التوالي)", Color3.fromRGB(150, 230, 255))
+			end
+		end)
+	end
 end
 
 Players.PlayerAdded:Connect(setupPlayer)
@@ -1931,6 +2065,9 @@ onTag("Checkpoint", function(cp)
 			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(255, 220, 90), 60, 45)
 			burst(cp.Position + Vector3.new(0, 4, 0), Color3.fromRGB(110, 230, 255), 40, 35)
 			toast(plr, "✅ نقطة حفظ " .. stage .. " — +5 عملات", Color3.fromRGB(110, 255, 160))
+			if stage == 9 then
+				achieve(plr, "voidwalker")
+			end
 			task.delay(3.6, function()
 				if STAGE_NAMES[stage + 1] and plr.Parent then
 					toast(plr, "المرحلة القادمة: " .. STAGE_NAMES[stage + 1], Color3.fromRGB(120, 210, 255))
@@ -1952,6 +2089,11 @@ local function collectCoin(plr, c)
 	local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
 	if v then
 		v.Value = v.Value + 1
+	end
+	local total = (plr:GetAttribute("TotalCoins") or 0) + 1
+	plr:SetAttribute("TotalCoins", total)
+	if total >= 100 then
+		achieve(plr, "coins100")
 	end
 	task.delay(15, function()
 		c.Transparency = 0
@@ -2016,6 +2158,15 @@ onTag("ShopItem", function(stand)
 		plr:SetAttribute("Own_" .. item.id, true)
 		applyUpgrades(plr)
 		toast(plr, "🛍 اشتريت " .. item.name .. "!", item.color)
+		local owned = 0
+		for _, it in ipairs(ALL_ITEMS) do
+			if plr:GetAttribute("Own_" .. it.id) then
+				owned = owned + 1
+			end
+		end
+		if owned >= 3 then
+			achieve(plr, "shopper")
+		end
 		sfx("buy", root, 0.8)
 		if root then
 			burst(root.Position, item.color, 50, 40)
@@ -2047,12 +2198,19 @@ onTag("Enemy", function(part)
 				v.Value = v.Value + 3
 			end
 			toast(plr, "💥 قضيت على عدو! +3 عملات", Color3.fromRGB(255, 220, 120))
+			local kills = (plr:GetAttribute("Kills") or 0) + 1
+			plr:SetAttribute("Kills", kills)
+			if kills >= 10 then
+				achieve(plr, "kills10")
+			end
+			fx(plr, "shake", 0.3, 0.2)
 			task.delay(12, function()
 				e.alive = true
 				e.model.Parent = Map
 			end)
 		elseif cooldown(plr.UserId .. "dmg", 1) then
 			hum:TakeDamage(e.dmg)
+			fx(plr, "hurt", e.dmg)
 			local away = (root.Position - e.body.Position) * Vector3.new(1, 0, 1)
 			if away.Magnitude < 0.1 then
 				away = Vector3.new(0, 0, 1)
@@ -2169,8 +2327,15 @@ local function playersWithin(center, radius, yRange)
 	return list
 end
 
+local function shakeNear(pos, radius, amount, secs)
+	for _, e in ipairs(playersWithin(pos, radius, 80)) do
+		fx(e.plr, "shake", amount, secs)
+	end
+end
+
 local function hurt(entry, dmg, fromPos)
 	entry.hum:TakeDamage(dmg)
+	fx(entry.plr, "hurt", dmg)
 	local away = (entry.root.Position - fromPos) * Vector3.new(1, 0, 1)
 	if away.Magnitude < 0.1 then
 		away = Vector3.new(0, 0, 1)
@@ -2207,6 +2372,7 @@ local function strike(pos)
 		l.Color = bolt.Color
 		l.Parent = bolt
 		burst(pos, Color3.fromRGB(255, 255, 150), 40, 40)
+		shakeNear(pos, 45, 0.6, 0.3)
 		sfx("glass", bolt, 1, 0.7)
 		Debris:AddItem(bolt, 0.3)
 		for _, e in ipairs(playersWithin(pos, 6.5, 12)) do
@@ -2266,6 +2432,7 @@ local function meteor(pos)
 		m.Transparency = 1
 		Debris:AddItem(m, 3)
 		burst(pos, Color3.fromRGB(255, 150, 50), 40, 45)
+		shakeNear(pos, 45, 0.5, 0.35)
 		sfx("glass", m, 1, 0.8)
 		for _, e in ipairs(playersWithin(pos, 7, 10)) do
 			hurt(e, 30, pos)
@@ -2275,6 +2442,7 @@ end
 
 local function shockwave(center, maxR)
 	maxR = maxR or 36
+	shakeNear(center, 70, 0.8, 0.5)
 	local ring = pt({
 		Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 8, 8), CFrame = CFrame.new(center + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(140, 220, 255), Material = Enum.Material.Neon, Transparency = 0.25,
@@ -2432,7 +2600,9 @@ local function defeatBoss(boss)
 	end
 	sfx("win", boss.body, 1)
 	boss.model.Parent = nil
+	shakeNear(p, 90, 1.3, 1.3)
 	for _, e in ipairs(playersWithin(boss.arena.center, boss.arena.radius + 10, 60)) do
+		achieve(e.plr, boss.id == 1 and "boss1" or "boss2")
 		local v = e.plr.leaderstats and e.plr.leaderstats:FindFirstChild("Coins")
 		if v then
 			v.Value = v.Value + boss.reward
@@ -2472,7 +2642,7 @@ onTag("BossPart", function(part)
 				end
 			end
 		elseif cooldown(plr.UserId .. "bossdmg" .. boss.id, 1) then
-			hurt({ hum = hum, root = root }, boss.contactDmg, boss.body.Position)
+			hurt({ plr = plr, hum = hum, root = root }, boss.contactDmg, boss.body.Position)
 		end
 	end)
 end)
@@ -2715,6 +2885,7 @@ onTag("SecretStar", function(st)
 		sfx("checkpoint", st, 0.8, 1.3)
 		toast(plr, "⭐ نجمة سرية " .. n .. "/3" .. (n == 3 and " — البوابة السرية في الهب فُتحت!" or ""), Color3.fromRGB(255, 235, 110))
 		if n == 3 then
+			achieve(plr, "explorer")
 			save(plr)
 		end
 	end)
@@ -2768,6 +2939,7 @@ onTag("Chest", function(chest)
 		local first = not plr:GetAttribute("SecretDone")
 		local reward = first and 150 or 20
 		plr:SetAttribute("SecretDone", true)
+		achieve(plr, "treasure")
 		local v = plr.leaderstats and plr.leaderstats:FindFirstChild("Coins")
 		if v then
 			v.Value = v.Value + reward
@@ -2832,6 +3004,94 @@ zoneMusic("SecretMusic", SECRET_MUSIC, 0.45, function(p)
 	return (p - secret.center).Magnitude < 150 and p.Y > secret.center.Y - 20
 end)
 
+-- خط البداية: يبدأ عدّاد الزمن عند عبور بوابة الهب (والمرحلة 0)
+onTag("StartLine", function(part)
+	part.Touched:Connect(function(hit)
+		local plr = fromHit(hit)
+		if not plr or plr:GetAttribute("RunStart") then
+			return
+		end
+		local sv = plr:FindFirstChild("leaderstats") and plr.leaderstats:FindFirstChild("Stage")
+		if sv and sv.Value == 0 then
+			plr:SetAttribute("RunTime", nil)
+			plr:SetAttribute("RunStart", Workspace:GetServerTimeNow())
+			toast(plr, "⏱ بدأ عدّاد الزمن! بالتوفيق", Color3.fromRGB(150, 230, 255))
+		end
+	end)
+end)
+
+-- قاعدة الهب: الانتقال السريع لآخر نقطة حفظ وصلت إليها
+onTag("ResumePad", function(pad)
+	local prompt = pad:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then
+		return
+	end
+	prompt.Triggered:Connect(function(plr)
+		local ls = plr:FindFirstChild("leaderstats")
+		local n = ls and ls.Stage.Value or 0
+		local sp = checkpointsByStage[n]
+		if n <= 0 or not sp or not plr.Character then
+			toast(plr, "لا توجد نقطة حفظ بعد — ابدأ المغامرة من البوابة!", Color3.fromRGB(255, 200, 120))
+			return
+		end
+		plr.RespawnLocation = sp
+		plr.Character:PivotTo(sp.CFrame + Vector3.new(0, 4, 0))
+		toast(plr, "⚡ انتقلت إلى نقطة الحفظ " .. n, Color3.fromRGB(120, 230, 255))
+	end)
+end)
+
+-- حدث دوري: مطر العملات في الهب + نصائح
+local function tempCoin(pos, life)
+	local c = pt({
+		Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 3, 3), CFrame = CFrame.new(pos),
+		Color = Color3.fromRGB(255, 205, 40), Material = Enum.Material.Neon, CanCollide = false,
+	}, Map, "Coin")
+	local rec = { part = c, pos = pos, phase = math.random() * 6 }
+	table.insert(coins, rec)
+	task.delay(life, function()
+		local i = table.find(coins, rec)
+		if i then
+			table.remove(coins, i)
+		end
+		c:Destroy()
+	end)
+end
+
+task.spawn(function()
+	task.wait(240)
+	while true do
+		for _, p in ipairs(Players:GetPlayers()) do
+			toast(p, "🌧 مطر العملات! عملات ذهبية ظهرت في الهب لمدة 40 ثانية", Color3.fromRGB(255, 220, 90))
+		end
+		for _ = 1, 40 do
+			local a = math.random() * math.pi * 2
+			local r = math.random() * 38
+			tempCoin(HUB_TOP + Vector3.new(math.cos(a) * r, 4, math.sin(a) * r), 40)
+		end
+		task.wait(600)
+	end
+end)
+
+local TIPS = {
+	"💡 ادعس على رأس الأعداء لتقتلهم",
+	"💡 ابحث عن 3 نجوم مخفية على جزر صغيرة جانبية",
+	"💡 مغناطيس العملات يوفّر عليك الجري خلف العملات",
+	"💡 القاعدة الذهبية بجانب النافورة تنقلك لآخر نقطة حفظ",
+	"💡 الزعيم يضعف عندما يتوهج: ادعس على رأسه!",
+	"💡 شاهد دوائر التحذير الحمراء: النيازك والصواعق تأتي بعدها",
+}
+task.spawn(function()
+	task.wait(90)
+	local i = 1
+	while true do
+		for _, p in ipairs(Players:GetPlayers()) do
+			toast(p, TIPS[i], Color3.fromRGB(190, 220, 255))
+		end
+		i = i % #TIPS + 1
+		task.wait(300)
+	end
+end)
+
 -- الفوز
 onTag("Win", function(w)
 	w.Touched:Connect(function(hit)
@@ -2841,6 +3101,27 @@ onTag("Win", function(w)
 		end
 		local ls = plr.leaderstats
 		sfx("win", w, 1)
+		local startT = plr:GetAttribute("RunStart")
+		if startT then
+			local elapsed = Workspace:GetServerTimeNow() - startT
+			plr:SetAttribute("RunTime", elapsed)
+			plr:SetAttribute("RunStart", nil)
+			local secs = math.floor(elapsed)
+			local label = string.format("%d:%02d", math.floor(secs / 60), secs % 60)
+			local isBest = ls.Best.Value == 0 or secs < ls.Best.Value
+			if isBest then
+				ls.Best.Value = secs
+			end
+			task.delay(4, function()
+				if plr.Parent then
+					toast(plr, (isBest and "⏱ أفضل زمن جديد: " or "⏱ زمنك: ") .. label, Color3.fromRGB(150, 230, 255))
+				end
+			end)
+			if elapsed <= 600 then
+				achieve(plr, "speedy")
+			end
+		end
+		achieve(plr, "champion")
 		ls.Wins.Value = ls.Wins.Value + 1
 		ls.Coins.Value = ls.Coins.Value + 50
 		ls.Stage.Value = 0

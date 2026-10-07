@@ -1701,7 +1701,6 @@ end
 -- حركة: العصي الدوّارة + دوران العملات
 ------------------------------------------------------------------------
 do
-	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
 		local t = os.clock()
 		for _, s in ipairs(spinners) do
@@ -1721,16 +1720,7 @@ do
 			au.part.Color = Color3.fromHSV((au.hue + math.sin(t * 0.15 + au.i) * 0.12) % 1, 0.7, 1)
 			au.part.Transparency = 0.8 + math.sin(t * 0.4 + au.i * 2) * 0.06
 		end
-		acc = acc + dt
-		if acc >= 0.05 then
-			acc = 0
-			for _, c in ipairs(coins) do
-				if not c.part:GetAttribute("Taken") then
-					c.part.CFrame = CFrame.new(c.pos + Vector3.new(0, math.sin(t * 2 + c.phase) * 0.5, 0))
-						* CFrame.Angles(0, t * 2.5 + c.phase, 0)
-				end
-			end
-		end
+		-- دوران العملات وطفوها يتم عند اللاعب (SkyClient) لتخفيف حركة الشبكة
 	end)
 end
 

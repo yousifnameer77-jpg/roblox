@@ -396,6 +396,7 @@ methods.HasTag = function(self, inst, tag)
 	return false
 end
 methods.GetTagged = function(self, tag) local t = {} for i, v in ipairs(tagged[tag] or {}) do t[i] = v end return t end
+methods.GetInstanceRemovedSignal = function(self, tag) return newSignal() end
 methods.GetInstanceAddedSignal = function(self, tag)
 	tagSignals[tag] = tagSignals[tag] or newSignal()
 	return tagSignals[tag]

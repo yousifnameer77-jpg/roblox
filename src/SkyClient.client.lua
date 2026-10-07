@@ -17,6 +17,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
+local CollectionService = game:GetService("CollectionService")
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
@@ -353,10 +354,36 @@ player:GetAttributeChangedSignal("Own_double"):Connect(updHint)
 updHint()
 
 ------------------------------------------------------------------------
+-- العملات: دوران وطفو محلي (لا يُرسل للسيرفر)
+------------------------------------------------------------------------
+local spinning = {}
+local function addCoin(c)
+	if c:IsA("BasePart") then
+		spinning[c] = { pos = c.Position, ph = math.random() * 6 }
+	end
+end
+for _, c in ipairs(CollectionService:GetTagged("Coin")) do
+	addCoin(c)
+end
+CollectionService:GetInstanceAddedSignal("Coin"):Connect(addCoin)
+CollectionService:GetInstanceRemovedSignal("Coin"):Connect(function(c)
+	spinning[c] = nil
+end)
+
+------------------------------------------------------------------------
 -- الحلقة الرئيسية
 ------------------------------------------------------------------------
 local timerAcc = 0
 RunService.RenderStepped:Connect(function(dt)
+	-- دوران العملات القريبة فقط
+	local now = os.clock()
+	local camPos = camera.CFrame.Position
+	for c, d in pairs(spinning) do
+		if c.Parent and (d.pos - camPos).Magnitude < 170 then
+			c.CFrame = CFrame.new(d.pos + Vector3.new(0, math.sin(now * 2 + d.ph) * 0.5, 0)) * CFrame.Angles(0, now * 2.5 + d.ph, 0)
+		end
+	end
+
 	-- عدّاد الزمن
 	timerAcc = timerAcc + dt
 	if timerAcc > 0.1 then

@@ -112,6 +112,14 @@ local STYLE_CRYSTAL = {
 	top = Color3.fromRGB(150, 110, 225), topMat = Enum.Material.Slate,
 	dirt = Color3.fromRGB(90, 62, 150), rock = Color3.fromRGB(58, 42, 100),
 }
+local STYLE_STORM = {
+	top = Color3.fromRGB(78, 86, 124), topMat = Enum.Material.Slate,
+	dirt = Color3.fromRGB(52, 58, 92), rock = Color3.fromRGB(34, 38, 62),
+}
+local STYLE_ARENA = {
+	top = Color3.fromRGB(44, 50, 92), topMat = Enum.Material.Slate,
+	dirt = Color3.fromRGB(32, 36, 70), rock = Color3.fromRGB(22, 24, 48),
+}
 local FLOWER_COLORS = {
 	Color3.fromRGB(255, 105, 180), Color3.fromRGB(255, 220, 70), Color3.fromRGB(255, 255, 255),
 	Color3.fromRGB(170, 120, 255), Color3.fromRGB(255, 130, 80), Color3.fromRGB(90, 200, 255),
@@ -288,11 +296,11 @@ local function burst(pos, color, count, speed)
 end
 
 -- هطول (ثلج / جزيئات ناعمة) فوق منطقة
-local function weather(center, size, color, rate, fall)
+local function weather(center, size, color, rate, fall, life)
 	local a = pt({ Size = size, Position = center, Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false })
 	local e = Instance.new("ParticleEmitter")
 	e.Rate = rate
-	e.Lifetime = NumberRange.new(7, 9)
+	e.Lifetime = life and NumberRange.new(life, life + 1) or NumberRange.new(7, 9)
 	e.Speed = NumberRange.new(fall, fall + 3)
 	e.EmissionDirection = Enum.NormalId.Bottom
 	e.SpreadAngle = Vector2.new(20, 20)
@@ -873,7 +881,7 @@ end
 ------------------------------------------------------------------------
 -- المرحلة 6: برج النيون (اتجاه -Z وللأعلى)
 ------------------------------------------------------------------------
-local summitTop
+local cp6
 do
 	local dir = Vector3.new(0, 0, -1)
 	local cur = cp5.Position - Vector3.new(0, 0.5, 0)
@@ -897,31 +905,116 @@ do
 		padPos = center
 		jumpPad(padPos, 110, m)
 	end
+	cp6 = checkpoint(padPos + dir * 14 + Vector3.new(0, 22, 0), 6, "نقطة حفظ 6 ✔", STYLE_STORM)
+end
 
-	-- القمة
-	summitTop = padPos + dir * 14 + Vector3.new(0, 22, 0) + dir * 8
-	local m = island(summitTop, 18, STYLE_GOLD)
-	m.Name = "Summit"
-	scatter(m, summitTop, 18, { lamps = 6, flowers = 20 })
+------------------------------------------------------------------------
+-- المرحلة 7: قلعة العاصفة (اتجاه +X) - أقراص دوّارة، صواعق، مطر
+------------------------------------------------------------------------
+local cp7
+local arena = {}
+do
+	local dir = Vector3.new(1, 0, 0)
+	local startTop = cp6.Position - Vector3.new(0, 0.5, 0)
+	local pos, r = startTop, 11
+	for i = 1, 4 do
+		pos = advance(pos, r, 9, 5, dir, 1)
+		r = 9
+		local m = Instance.new("Model")
+		m.Name = "StormDisc"
+		m.Parent = Map
+		local top = disc(pos - Vector3.new(0, 1, 0), 9, 2, Color3.fromRGB(86, 98, 150), Enum.Material.Metal, m)
+		disc(pos - Vector3.new(0, 4, 0), 5.5, 4, Color3.fromRGB(34, 38, 62), Enum.Material.Slate, m)
+		local rim = disc(pos - Vector3.new(0, 1, 0), 9.15, 1.2, Color3.fromRGB(110, 230, 255), Enum.Material.Neon, m)
+		rim.Transparency = 0.35
+		local speed = (i % 2 == 0 and -1 or 1) * (0.5 + i * 0.07)
+		local pivot = pos - Vector3.new(0, 1, 0)
+		local flat = CFrame.Angles(0, 0, math.pi / 2)
+		table.insert(spinners, { part = top, pivot = pivot, speed = speed, phase = 0, localCF = flat })
+		table.insert(spinners, { part = rim, pivot = pivot, speed = speed, phase = 0, localCF = flat })
+		local wall = pt({
+			Size = Vector3.new(12, 4, 1.5), CFrame = CFrame.new(pivot), Color = Color3.fromRGB(255, 70, 90),
+			Material = Enum.Material.Neon,
+		}, m, "Pusher")
+		table.insert(spinners, { part = wall, pivot = pivot, speed = speed, phase = i, localCF = CFrame.new(0, 3, 4.5) })
+		coin(pos + Vector3.new(0, 6, 0))
+		addPathPoint(pos)
+	end
+	for i = 1, 3 do
+		pos = advance(pos, r, 4.5, 3, dir, 1.5)
+		pos = Vector3.new(pos.X, pos.Y, startTop.Z + (i % 2 == 0 and 3 or -3))
+		r = 4.5
+		local m = island(pos, 4.5, STYLE_STORM)
+		crystal(pos + Vector3.new(2.6, 0, 0), 7, Color3.fromRGB(255, 255, 130), m)
+		coin(pos + Vector3.new(0, 3.5, 0))
+	end
+	pos = advance(pos, r, 11, 4, dir, 1.5)
+	pos = Vector3.new(pos.X, pos.Y, startTop.Z)
+	cp7 = checkpoint(pos, 7, "نقطة حفظ 7 ✔", STYLE_STORM)
 
-	pt({ Size = Vector3.new(5, 3, 5), Position = summitTop + Vector3.new(0, 1.5, 0),
-		Color = Color3.fromRGB(240, 240, 250), Material = Enum.Material.Marble }, m)
-	local trophy = ball(summitTop + Vector3.new(0, 6, 0), 5, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, m, false)
+	-- أجواء العاصفة: غيوم داكنة ومطر
+	local midX = (startTop.X + pos.X) / 2
+	local len = pos.X - startTop.X
+	for k = 1, 12 do
+		local c = ball(Vector3.new(startTop.X - 30 + RNG:NextNumber(0, len + 60), startTop.Y + RNG:NextNumber(38, 55), startTop.Z + RNG:NextNumber(-45, 45)),
+			RNG:NextNumber(26, 44), Color3.fromRGB(56, 60, 84), Enum.Material.SmoothPlastic, Map, false)
+		c.Transparency = 0.1
+		c.CanQuery = false
+		c.CanTouch = false
+	end
+	weather(Vector3.new(midX, startTop.Y + 45, startTop.Z), Vector3.new(len + 80, 1, 110), Color3.fromRGB(160, 185, 235), 700, 75, 1)
+	arena.stormMinX, arena.stormMaxX = startTop.X - 20, pos.X + 20
+	arena.stormZ, arena.stormY = startTop.Z, startTop.Y
+end
+
+------------------------------------------------------------------------
+-- المرحلة 8: ساحة الزعيم "تيتان السماء"
+------------------------------------------------------------------------
+do
+	local dir = Vector3.new(1, 0, 0)
+	local top = advance(cp7.Position - Vector3.new(0, 0.5, 0), 11, 34, 5, dir, 1)
+	local m = island(top, 34, STYLE_ARENA)
+	m.Name = "BossArena"
+	arena.center, arena.radius = top, 34
+
+	-- حلقات مضيئة على الأرض
+	for _, rr in ipairs({ 30, 18, 7 }) do
+		local ring = disc(top + Vector3.new(0, 0.12, 0), rr, 0.2, Color3.fromRGB(150, 90, 255), Enum.Material.Neon, m)
+		ring.Transparency = 0.55
+		ring.CanCollide = false
+	end
+	-- أعمدة الساحة
+	for i = 1, 8 do
+		local a = (i / 8) * math.pi * 2
+		local base = top + Vector3.new(math.cos(a) * 31.5, 0, math.sin(a) * 31.5)
+		pt({ Size = Vector3.new(3, 16, 3), Position = base + Vector3.new(0, 8, 0), Color = Color3.fromRGB(28, 30, 54), Material = Enum.Material.Metal }, m)
+		local orb = ball(base + Vector3.new(0, 17.5, 0), 3.4, Color3.fromHSV(0.72 + i * 0.02, 0.7, 1), Enum.Material.Neon, m, false)
+		local l = Instance.new("PointLight")
+		l.Range = 30
+		l.Color = orb.Color
+		l.Parent = orb
+	end
+
+	-- الكأس وقاعدة الفوز (مخفية حتى يُهزم الزعيم)
+	local pedestal = pt({ Size = Vector3.new(5, 3, 5), Position = top + Vector3.new(0, 1.5, 0),
+		Color = Color3.fromRGB(240, 240, 250), Material = Enum.Material.Marble, Transparency = 1, CanCollide = false }, m)
+	local trophy = ball(top + Vector3.new(0, 6, 0), 5, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, m, false)
+	trophy.Transparency = 1
 	local tl = Instance.new("PointLight")
 	tl.Range = 40
 	tl.Brightness = 3
 	tl.Color = Color3.fromRGB(255, 220, 100)
+	tl.Enabled = false
 	tl.Parent = trophy
-	local winPad = disc(summitTop + Vector3.new(0, 0.3, 0), 7, 0.6, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, m)
+	local winPad = disc(top + Vector3.new(0, 0.3, 0), 7, 0.6, Color3.fromRGB(255, 205, 40), Enum.Material.Neon, m)
+	winPad.Transparency = 1
+	winPad.CanTouch = false
 	CollectionService:AddTag(winPad, "Win")
-	for g = 1, 3 do
-		newEnemy("guardian", "orbit", { center = summitTop + Vector3.new(0, 3.5, 0), radius = 12, speed = 1.0, phase = g * math.pi * 2 / 3 })
-	end
 	billboard(trophy, "🏆 القمة! 🏆", Color3.fromRGB(255, 230, 120))
 
-	local fw = pt({ Size = Vector3.new(1, 1, 1), Position = summitTop + Vector3.new(0, 14, 0),
-		Transparency = 1, CanCollide = false }, m)
+	local fw = pt({ Size = Vector3.new(1, 1, 1), Position = top + Vector3.new(0, 14, 0), Transparency = 1, CanCollide = false }, m)
 	local e = Instance.new("ParticleEmitter")
+	e.Enabled = false
 	e.Rate = 25
 	e.Lifetime = NumberRange.new(1.5, 2.2)
 	e.Speed = NumberRange.new(25, 45)
@@ -935,6 +1028,65 @@ do
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 200, 255)),
 	})
 	e.Parent = fw
+	arena.winPad, arena.pedestal, arena.trophy, arena.trophyLight, arena.fireworks = winPad, pedestal, trophy, tl, e
+
+	-- الزعيم
+	local bm = Instance.new("Model")
+	bm.Name = "SkyTitan"
+	local function bpart(shape, size, offset, color, material, transparency)
+		return pt({
+			Shape = shape, Size = size, Position = offset, Color = color,
+			Material = material or Enum.Material.SmoothPlastic, Transparency = transparency or 0, CanCollide = false,
+		}, bm, "BossPart")
+	end
+	local B, K = Enum.PartType.Ball, Enum.PartType.Block
+	local body = bpart(B, Vector3.new(13, 13, 13), Vector3.zero, Color3.fromRGB(60, 40, 110), Enum.Material.Metal)
+	bpart(B, Vector3.new(5.5, 5.5, 5.5), Vector3.new(0, 3.5, -5.2), Color3.fromRGB(255, 140, 40), Enum.Material.Neon)
+	for _, sx in ipairs({ -2.6, 2.6 }) do
+		bpart(B, Vector3.new(2, 2, 2), Vector3.new(sx, 1.2, -6.2), Color3.fromRGB(255, 240, 80), Enum.Material.Neon)
+	end
+	for k = 1, 5 do
+		local a = (k / 5) * math.pi * 2
+		bpart(K, Vector3.new(1.2, 5, 1.2), Vector3.new(math.cos(a) * 4, 7.5, math.sin(a) * 4), Color3.fromRGB(255, 60, 200), Enum.Material.Neon)
+	end
+	for _, sx in ipairs({ -10, 10 }) do
+		bpart(B, Vector3.new(6, 6, 6), Vector3.new(sx, -3, -1), Color3.fromRGB(40, 28, 80), Enum.Material.Metal)
+		bpart(B, Vector3.new(3, 3, 3), Vector3.new(sx, -3, -3.5), Color3.fromRGB(255, 60, 200), Enum.Material.Neon)
+	end
+	bm.PrimaryPart = body
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 320, 0, 46)
+	bb.StudsOffset = Vector3.new(0, 13, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 260
+	bb.Parent = body
+	local back = Instance.new("Frame")
+	back.Size = UDim2.fromScale(1, 1)
+	back.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
+	back.BorderSizePixel = 0
+	back.Parent = bb
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(255, 60, 90)
+	fill.BorderSizePixel = 0
+	fill.Parent = back
+	local lab = Instance.new("TextLabel")
+	lab.Name = "Label"
+	lab.Size = UDim2.fromScale(1, 1)
+	lab.BackgroundTransparency = 1
+	lab.TextScaled = true
+	lab.Font = Enum.Font.GothamBlack
+	lab.TextColor3 = Color3.fromRGB(255, 255, 255)
+	lab.TextStrokeTransparency = 0.4
+	lab.Parent = back
+	local spawnPos = top + Vector3.new(0, 14, 0)
+	bm:PivotTo(CFrame.new(spawnPos))
+	bm.Parent = Map
+	arena.boss = {
+		model = bm, body = body, fill = fill, label = lab, hp = 10, maxHp = 10, alive = true, vulnerable = false,
+		pos = spawnPos, target = spawnPos, face = top + Vector3.new(0, 14, 30),
+	}
 end
 
 ------------------------------------------------------------------------
@@ -1078,7 +1230,7 @@ do
 	RunService.Heartbeat:Connect(function(dt)
 		local t = os.clock()
 		for _, s in ipairs(spinners) do
-			s.part.CFrame = CFrame.new(s.pivot) * CFrame.Angles(0, s.phase + t * s.speed, 0)
+			s.part.CFrame = CFrame.new(s.pivot) * CFrame.Angles(0, s.phase + t * s.speed, 0) * (s.localCF or CFrame.new())
 		end
 		for _, e in ipairs(enemies) do
 			if e.alive then
@@ -1113,6 +1265,7 @@ end
 local STAGE_NAMES = {
 	"🌸 جزر الزهور", "🌀 المنصات المتحركة", "🌋 بركان الدوّامات",
 	"❄️ الجبال الجليدية", "🔮 جسر الزجاج السحري", "⚡ برج النيون",
+	"🌩 قلعة العاصفة", "🐉 معركة تيتان السماء",
 }
 
 local store
@@ -1583,6 +1736,314 @@ addTrail = function(char)
 	tr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
 	tr.Parent = root
 end
+-- أدوات عامة للمعارك
+local function playersWithin(center, radius, yRange)
+	local list = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local char = plr.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if root and hum and hum.Health > 0 then
+			local d = (root.Position - center) * Vector3.new(1, 0, 1)
+			if d.Magnitude <= radius and math.abs(root.Position.Y - center.Y) <= (yRange or 60) then
+				table.insert(list, { plr = plr, root = root, hum = hum })
+			end
+		end
+	end
+	return list
+end
+
+local function hurt(entry, dmg, fromPos)
+	entry.hum:TakeDamage(dmg)
+	local away = (entry.root.Position - fromPos) * Vector3.new(1, 0, 1)
+	if away.Magnitude < 0.1 then
+		away = Vector3.new(0, 0, 1)
+	end
+	entry.root.AssemblyLinearVelocity = away.Unit * 50 + Vector3.new(0, 35, 0)
+	burst(entry.root.Position, Color3.fromRGB(255, 70, 70), 16, 22)
+	sfx("hurt", entry.root, 0.7)
+end
+
+local function warnDisc(pos, radius, secs)
+	local d = disc(pos + Vector3.new(0, 0.3, 0), radius, 0.3, Color3.fromRGB(255, 50, 60), Enum.Material.Neon, Map)
+	d.CanCollide, d.CanQuery, d.CanTouch = false, false, false
+	task.spawn(function()
+		local t0 = os.clock()
+		while os.clock() - t0 < secs and d.Parent do
+			d.Transparency = 0.2 + 0.4 * (math.sin((os.clock() - t0) * 14) + 1) / 2
+			task.wait(0.05)
+		end
+		d:Destroy()
+	end)
+end
+
+-- صواعق العاصفة (المرحلة 7): دائرة تحذير حمراء ثم صاعقة
+local function strike(pos)
+	warnDisc(pos, 5.5, 1.2)
+	task.delay(1.2, function()
+		local bolt = pt({
+			Size = Vector3.new(2.5, 90, 2.5), Position = pos + Vector3.new(0, 45, 0), Color = Color3.fromRGB(255, 255, 170),
+			Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CanTouch = false,
+		}, Map)
+		local l = Instance.new("PointLight")
+		l.Range = 70
+		l.Brightness = 6
+		l.Color = bolt.Color
+		l.Parent = bolt
+		burst(pos, Color3.fromRGB(255, 255, 150), 40, 40)
+		sfx("glass", bolt, 1, 0.7)
+		Debris:AddItem(bolt, 0.3)
+		for _, e in ipairs(playersWithin(pos, 6.5, 12)) do
+			hurt(e, 30, pos)
+		end
+	end)
+end
+
+task.spawn(function()
+	local rp = RaycastParams.new()
+	rp.FilterType = Enum.RaycastFilterType.Include
+	rp.FilterDescendantsInstances = { Map }
+	while true do
+		task.wait(2.2)
+		for _, plr in ipairs(Players:GetPlayers()) do
+			local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+			if root and arena.stormMinX then
+				local p = root.Position
+				if p.X > arena.stormMinX and p.X < arena.stormMaxX and math.abs(p.Z - arena.stormZ) < 45 and p.Y > arena.stormY - 40 then
+					local v = root.AssemblyLinearVelocity
+					local target = p + Vector3.new(math.random(-14, 14) + v.X * 1.2, 0, math.random(-14, 14) + v.Z * 1.2)
+					local res = Workspace:Raycast(target + Vector3.new(0, 40, 0), Vector3.new(0, -120, 0), rp)
+					if res then
+						strike(res.Position)
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- الزعيم: تيتان السماء
+local boss = arena.boss
+local function setBossHP(hp)
+	boss.hp = hp
+	boss.fill.Size = UDim2.fromScale(math.max(hp, 0) / boss.maxHp, 1)
+	boss.label.Text = "تيتان السماء  " .. math.max(hp, 0) .. "/" .. boss.maxHp
+end
+setBossHP(boss.maxHp)
+
+local function setVulnerable(v)
+	boss.vulnerable = v
+	boss.body.Material = v and Enum.Material.Neon or Enum.Material.Metal
+	boss.body.Color = v and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(60, 40, 110)
+end
+
+local function meteor(pos)
+	warnDisc(pos, 6, 1.1)
+	task.delay(0.1, function()
+		local m = ball(pos + Vector3.new(0, 70, 0), 5, Color3.fromRGB(255, 130, 40), Enum.Material.Neon, Map, false)
+		m.CanQuery, m.CanTouch = false, false
+		local tw = TweenService:Create(m, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ Position = pos + Vector3.new(0, 2.5, 0) })
+		tw:Play()
+		tw.Completed:Wait()
+		m.Transparency = 1
+		Debris:AddItem(m, 3)
+		burst(pos, Color3.fromRGB(255, 150, 50), 40, 45)
+		sfx("glass", m, 1, 0.8)
+		for _, e in ipairs(playersWithin(pos, 7, 10)) do
+			hurt(e, 30, pos)
+		end
+	end)
+end
+
+local function shockwave(center)
+	local ring = pt({
+		Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 8, 8), CFrame = CFrame.new(center + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(140, 220, 255), Material = Enum.Material.Neon, Transparency = 0.25,
+		CanCollide = false, CanQuery = false, CanTouch = false,
+	}, Map)
+	local t0, dur, hit = os.clock(), 2.6, {}
+	while true do
+		local u = (os.clock() - t0) / dur
+		if u >= 1 then
+			break
+		end
+		local R = 4 + 32 * u
+		ring.Size = Vector3.new(3, R * 2, R * 2)
+		ring.Transparency = 0.25 + 0.6 * u
+		for _, e in ipairs(playersWithin(center, R + 3, 20)) do
+			local d = ((e.root.Position - center) * Vector3.new(1, 0, 1)).Magnitude
+			if math.abs(d - R) < 2.5 and e.root.Position.Y < center.Y + 4 and not hit[e.plr] then
+				hit[e.plr] = true
+				hurt(e, 25, center)
+			end
+		end
+		task.wait(0.05)
+	end
+	ring:Destroy()
+end
+
+local function lockWin()
+	arena.winPad.Transparency, arena.winPad.CanTouch = 1, false
+	arena.pedestal.Transparency, arena.trophy.Transparency = 1, 1
+	arena.pedestal.CanCollide = false
+	arena.trophyLight.Enabled = false
+	arena.fireworks.Enabled = false
+end
+
+local function unlockWin()
+	arena.winPad.Transparency, arena.winPad.CanTouch = 0, true
+	arena.pedestal.Transparency, arena.trophy.Transparency = 0, 0
+	arena.pedestal.CanCollide = true
+	arena.trophyLight.Enabled = true
+	arena.fireworks.Enabled = true
+end
+
+local function defeatBoss()
+	boss.alive = false
+	setVulnerable(false)
+	local p = boss.body.Position
+	for _, c in ipairs({ Color3.fromRGB(255, 80, 120), Color3.fromRGB(255, 220, 80), Color3.fromRGB(80, 200, 255), Color3.fromRGB(190, 120, 255) }) do
+		burst(p, c, 80, 70)
+	end
+	sfx("win", boss.body, 1)
+	boss.model.Parent = nil
+	for _, e in ipairs(playersWithin(arena.center, arena.radius + 10, 60)) do
+		local v = e.plr.leaderstats and e.plr.leaderstats:FindFirstChild("Coins")
+		if v then
+			v.Value = v.Value + 25
+		end
+		toast(e.plr, "🐉 هُزم تيتان السماء! +25 عملة — المس القاعدة الذهبية للفوز", Color3.fromRGB(255, 220, 90))
+	end
+	unlockWin()
+	task.delay(40, lockWin)
+	task.delay(45, function()
+		setBossHP(boss.maxHp)
+		boss.pos = arena.center + Vector3.new(0, 40, 0)
+		boss.target = arena.center + Vector3.new(0, 14, 0)
+		boss.model.Parent = Map
+		boss.alive = true
+	end)
+end
+
+onTag("BossPart", function(part)
+	part.Touched:Connect(function(hit)
+		if not boss.alive then
+			return
+		end
+		local plr, _, hum, root = fromHit(hit)
+		if not plr then
+			return
+		end
+		local above = root.Position.Y > boss.body.Position.Y + 5 and root.AssemblyLinearVelocity.Y < 8
+		if boss.vulnerable and above then
+			if cooldown("bossHit", 1.2) then
+				root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 75, root.AssemblyLinearVelocity.Z)
+				burst(boss.body.Position + Vector3.new(0, 6, 0), Color3.fromRGB(255, 200, 80), 50, 45)
+				sfx("stomp", root, 1, 0.8)
+				setBossHP(boss.hp - 1)
+				toast(plr, "💥 ضربة قوية! " .. math.max(boss.hp, 0) .. " متبقي", Color3.fromRGB(255, 200, 100))
+				if boss.hp <= 0 then
+					defeatBoss()
+				end
+			end
+		elseif cooldown(plr.UserId .. "bossdmg", 1) then
+			hurt({ hum = hum, root = root }, 30, boss.body.Position)
+		end
+	end)
+end)
+
+local function randomArenaSpot()
+	local a = math.random() * math.pi * 2
+	local r = math.random() * (arena.radius - 5)
+	return arena.center + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.4)
+		local list = boss.alive and playersWithin(arena.center, arena.radius + 12, 40) or {}
+		if #list == 0 then
+			if boss.alive then
+				boss.target = arena.center + Vector3.new(0, 14, 0)
+				setVulnerable(false)
+				if boss.hp < boss.maxHp then
+					setBossHP(boss.maxHp)
+				end
+			end
+		else
+			local phase2 = boss.hp <= boss.maxHp / 2
+			-- 1) يطاردك محلقاً
+			for _ = 1, 15 do
+				local l = playersWithin(arena.center, arena.radius + 12, 40)
+				if #l > 0 and boss.alive then
+					local pp = l[1].root.Position
+					boss.target = Vector3.new(pp.X, arena.center.Y + 14, pp.Z)
+					boss.face = pp
+				end
+				task.wait(0.2)
+			end
+			if boss.alive then
+				-- 2) ضربة أرضية + موجة صدمية، ثم ينهار فيصبح قابلاً للدعس
+				local landing = Vector3.new(boss.pos.X, arena.center.Y + 7.5, boss.pos.Z)
+				boss.target = landing
+				task.wait(0.9)
+				local ground = Vector3.new(boss.pos.X, arena.center.Y, boss.pos.Z)
+				burst(ground + Vector3.new(0, 1, 0), Color3.fromRGB(140, 220, 255), 60, 50)
+				sfx("glass", boss.body, 1, 0.6)
+				task.spawn(shockwave, ground)
+				if phase2 then
+					task.delay(1.1, function()
+						task.spawn(shockwave, ground)
+					end)
+				end
+				setVulnerable(true)
+				for _ = 1, 30 do
+					if not boss.alive then
+						break
+					end
+					task.wait(0.2)
+				end
+				setVulnerable(false)
+				if boss.alive then
+					boss.target = arena.center + Vector3.new(0, 14, 0)
+					task.wait(1)
+					-- 3) مطر النيازك
+					local n = phase2 and 14 or 8
+					for i = 1, n do
+						if not boss.alive then
+							break
+						end
+						local spot = randomArenaSpot()
+						if i % 3 == 0 then
+							local l = playersWithin(arena.center, arena.radius, 40)
+							if #l > 0 then
+								spot = Vector3.new(l[1].root.Position.X, arena.center.Y, l[1].root.Position.Z)
+							end
+						end
+						meteor(spot)
+						task.wait(phase2 and 0.25 or 0.4)
+					end
+					task.wait(1.8)
+				end
+			end
+		end
+	end
+end)
+
+RunService.Heartbeat:Connect(function(dt)
+	if not boss.alive then
+		return
+	end
+	boss.pos = boss.pos:Lerp(boss.target, 1 - math.pow(0.02, dt))
+	local bob = boss.vulnerable and 0 or math.sin(os.clock() * 2) * 0.8
+	local at = Vector3.new(boss.face.X, boss.pos.Y, boss.face.Z)
+	if (at - boss.pos).Magnitude < 0.5 then
+		at = boss.pos + Vector3.new(0, 0, -1)
+	end
+	boss.model:PivotTo(CFrame.lookAt(boss.pos + Vector3.new(0, bob, 0), at))
+end)
+
 -- الفوز
 onTag("Win", function(w)
 	w.Touched:Connect(function(hit)
